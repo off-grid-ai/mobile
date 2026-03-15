@@ -1,13 +1,13 @@
-# P0 E2E: Text Generation Flow
-# Tests the complete text generation cycle
+# P0 E2E: Stop Generation Flow
+# Tests stopping an in-progress generation
 # Prerequisites: Text model must be loaded
 
 appId: ${APP_ID}
-name: "P0: Text Generation"
+name: "P0: Stop Generation"
 tags:
   - p0
   - generation
-  - text
+  - stop
 ---
 
 - launchApp
@@ -22,25 +22,25 @@ tags:
 - runFlow:
     when:
       visible:
-        text: "Welcome to Off Grid"
+        id: "onboarding-screen"
     commands:
       - tapOn:
-          text: "Skip"
+          id: "onboarding-skip"
       - extendedWaitUntil:
           visible:
-            text: "Skip for Now"
-          timeout: 30000
+            id: "model-download-screen"
+          timeout: 20000
       - tapOn:
-          text: "Skip for Now"
+          id: "model-download-skip"
 
-# Handle download prompt if shown
+# Handle model download screen if shown
 - runFlow:
     when:
       visible:
-        text: "Download Your First Model"
+        id: "model-download-screen"
     commands:
       - tapOn:
-          text: "Skip for Now"
+          id: "model-download-skip"
 
 # Wait for home screen
 - extendedWaitUntil:
@@ -66,29 +66,47 @@ tags:
 - tapOn:
     id: "new-chat-button"
 
-# Wait for chat screen
 - extendedWaitUntil:
     visible:
       id: "chat-screen"
     timeout: 10000
 
-# Type a test message
+# Type a message that will generate a VERY long response
 - tapOn:
     id: "chat-input"
-- inputText: "Hello, respond with one word: OK"
+- inputText: "Write a comprehensive 2000 word essay covering the complete history of artificial intelligence from the 1950s to today, including all major milestones, breakthroughs, key researchers, important papers, and technological developments in extreme detail"
 
-# Dismiss keyboard so send-button testID can be found
+# Dismiss keyboard before tapping send
 - hideKeyboard
 
 # Send the message
 - tapOn:
     id: "send-button"
 
-# Wait for response (assistant message appears)
+# Wait for stop button to appear (generation started)
 - extendedWaitUntil:
     visible:
-      id: "assistant-message"
-    timeout: 60000
+      id: "stop-button"
+    timeout: 5000
+
+# Tap stop immediately (small model generates fast)
+- tapOn:
+    id: "stop-button"
+
+# Verify stop button disappears
+- extendedWaitUntil:
+    notVisible:
+      id: "stop-button"
+    timeout: 10000
+
+# Dismiss voice input dialog if it appeared
+- runFlow:
+    when:
+      visible:
+        text: "Voice Input Unavailable"
+    commands:
+      - tapOn:
+          text: "OK"
 
 # Dismiss support/share sheet if it appeared
 - runFlow:
@@ -99,6 +117,6 @@ tags:
       - tapOn:
           text: "Maybe later"
 
-# Verify input is ready for next message
+# Verify input is ready
 - assertVisible:
     id: "chat-input"

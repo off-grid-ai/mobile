@@ -33,17 +33,17 @@ tags:
 - runFlow:
     when:
       visible:
-        text: "Welcome to Off Grid"
+        id: "onboarding-screen"
     commands:
       - evalScript: "${console.log('SETUP - Skip onboarding')}"
       - tapOn:
-          text: "Skip"
+          id: "onboarding-skip"
       - extendedWaitUntil:
           visible:
-            text: "Skip for Now"
-          timeout: 30000
+            id: "model-download-screen"
+          timeout: 20000
       - tapOn:
-          text: "Skip for Now"
+          id: "model-download-skip"
 
 # ==============================
 # Handle Model Download Prompt
@@ -51,11 +51,11 @@ tags:
 - runFlow:
     when:
       visible:
-        text: "Download Your First Model"
+        id: "model-download-screen"
     commands:
       - evalScript: "${console.log('SETUP - Skip download prompt')}"
       - tapOn:
-          text: "Skip for Now"
+          id: "model-download-skip"
 
 # ==============================
 # Wait for Home

@@ -21,31 +21,31 @@ tags:
       id: "app-loading"
     timeout: 30000
 
-# Handle onboarding
+# Handle onboarding if shown
 - runFlow:
     when:
       visible:
-        text: "Welcome to Off Grid"
+        id: "onboarding-screen"
     commands:
       - evalScript: "${console.log('IMAGE_GEN - Skip onboarding')}"
       - tapOn:
-          text: "Skip"
+          id: "onboarding-skip"
       - extendedWaitUntil:
           visible:
-            text: "Skip for Now"
-          timeout: 30000
+            id: "model-download-screen"
+          timeout: 20000
       - tapOn:
-          text: "Skip for Now"
+          id: "model-download-skip"
 
-# Handle download prompt
+# Handle model download screen if shown
 - runFlow:
     when:
       visible:
-        text: "Download Your First Model"
+        id: "model-download-screen"
     commands:
-      - evalScript: "${console.log('IMAGE_GEN - Skip prompt')}"
+      - evalScript: "${console.log('IMAGE_GEN - Skip model download')}"
       - tapOn:
-          text: "Skip for Now"
+          id: "model-download-skip"
 
 # Wait for home screen
 - extendedWaitUntil:
