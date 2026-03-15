@@ -1,0 +1,66 @@
+# P0 E2E: 3.9 Load text model from Home
+# Opens model picker, selects a downloaded model, waits for load, verifies New Chat
+# QA_TEST_PLAN §3.9
+# Precondition: a text model must be downloaded (run after 02b)
+
+appId: ${APP_ID}
+name: "P0: Load Text Model"
+tags:
+  - p0
+  - models
+  - load
+---
+
+- launchApp
+
+# Handle onboarding/model-download if shown
+- runFlow:
+    when:
+      visible:
+        id: "onboarding-screen"
+    commands:
+      - tapOn:
+          id: "onboarding-skip"
+      - extendedWaitUntil:
+          visible:
+            id: "model-download-screen"
+          timeout: 20000
+      - tapOn:
+          id: "model-download-skip"
+
+- runFlow:
+    when:
+      visible:
+        id: "model-download-screen"
+    commands:
+      - tapOn:
+          id: "model-download-skip"
+
+- extendedWaitUntil:
+    visible:
+      id: "home-screen"
+    timeout: 15000
+
+# If model already loaded, New Chat is visible — load via picker only if setup card shown
+- runFlow:
+    when:
+      visible:
+        id: "setup-card"
+    commands:
+      # Step 1: Tap browse models to open picker
+      - tapOn:
+          id: "browse-models-button"
+      # Picker sheet — wait for a model item
+      - extendedWaitUntil:
+          visible:
+            id: "model-item"
+          timeout: 5000
+      # Step 2: Tap first model to load it
+      - tapOn:
+          id: "model-item"
+
+# Step 3: Wait for model to finish loading (overlay may flash fast on small models)
+- extendedWaitUntil:
+    visible:
+      id: "new-chat-button"
+    timeout: 60000
