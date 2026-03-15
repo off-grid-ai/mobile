@@ -73,4 +73,4 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
-docs/TRACTION_KNOWLEDGE_BASE.md
+docs/TRACTION_KNOWLEDGE_BASE.md*.png
