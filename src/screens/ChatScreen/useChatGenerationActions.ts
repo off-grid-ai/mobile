@@ -89,8 +89,8 @@ function buildMessagesForContext(conversationId: string, messageText: string, sy
   const allMessages = (conversation?.messages || []).filter(m => !m.isSystemInfo);
   const { prefix, filtered } = applyCompactionPrefix(conversation, systemPrompt, allMessages);
   const lastMsg = filtered.at(-1);
-  const userMessageForContext = (lastMsg?.role === 'user' ? { ...lastMsg, content: messageText } : lastMsg) as Message;
-  return [...prefix, ...filtered.slice(0, -1), userMessageForContext];
+  if (!lastMsg) return [...prefix];
+  return [...prefix, ...filtered.slice(0, -1), lastMsg.role === 'user' ? { ...lastMsg, content: messageText } : lastMsg];
 }
 export async function shouldRouteToImageGenerationFn(
   deps: Pick<GenerationDeps, 'isGeneratingImage' | 'settings' | 'imageModelLoaded' | 'downloadedModels' | 'setIsClassifying' | 'setAppImageGenerationStatus' | 'setAppIsGeneratingImage'>,

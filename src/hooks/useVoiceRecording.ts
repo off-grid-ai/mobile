@@ -22,6 +22,34 @@ export const useVoiceRecording = (): UseVoiceRecordingResult => {
   const [error, setError] = useState<string | null>(null);
   const isCancelled = useRef(false);
 
+  const onStartRef = useRef<() => void>(null!);
+  onStartRef.current = () => {
+    setIsRecording(true);
+    setError(null);
+  };
+  const onEndRef = useRef<() => void>(null!);
+  onEndRef.current = () => {
+    setIsRecording(false);
+  };
+  const onResultsRef = useRef<(results: string[]) => void>(null!);
+  onResultsRef.current = (results: string[]) => {
+    if (!isCancelled.current && results.length > 0) {
+      setFinalResult(results[0]);
+      setPartialResult('');
+    }
+  };
+  const onPartialResultsRef = useRef<(results: string[]) => void>(null!);
+  onPartialResultsRef.current = (results: string[]) => {
+    if (!isCancelled.current && results.length > 0) {
+      setPartialResult(results[0]);
+    }
+  };
+  const onErrorRef = useRef<(errorMsg: string) => void>(null!);
+  onErrorRef.current = (errorMsg: string) => {
+    setError(errorMsg);
+    setIsRecording(false);
+  };
+
   useEffect(() => {
     const initVoice = async () => {
       logger.log('[Voice] Starting initialization...');
@@ -47,31 +75,15 @@ export const useVoiceRecording = (): UseVoiceRecordingResult => {
     initVoice();
 
     voiceService.setCallbacks({
-      onStart: () => {
-        setIsRecording(true);
-        setError(null);
-      },
-      onEnd: () => {
-        setIsRecording(false);
-      },
-      onResults: (results) => {
-        if (!isCancelled.current && results.length > 0) {
-          setFinalResult(results[0]);
-          setPartialResult('');
-        }
-      },
-      onPartialResults: (results) => {
-        if (!isCancelled.current && results.length > 0) {
-          setPartialResult(results[0]);
-        }
-      },
-      onError: (errorMsg) => {
-        setError(errorMsg);
-        setIsRecording(false);
-      },
+      onStart: () => onStartRef.current(),
+      onEnd: () => onEndRef.current(),
+      onResults: (results) => onResultsRef.current(results),
+      onPartialResults: (results) => onPartialResultsRef.current(results),
+      onError: (errorMsg) => onErrorRef.current(errorMsg),
     });
 
     return () => {
+      voiceService.setCallbacks({});
       voiceService.destroy();
     };
   }, []);

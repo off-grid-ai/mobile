@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useEffect } from 'react';
+import { Dispatch, SetStateAction, useEffect, useRef } from 'react';
 import {
   AlertState,
   showAlert,
@@ -268,7 +268,7 @@ export function useChatImageModelEffects(deps: ImageModelEffectsDeps): void {
     }, 0);
     return () => { cancelled = true; clearTimeout(timer); };
 
-  }, []);
+  }, [setDownloadedImageModels]);
   useEffect(() => {
     let cancelled = false;
     const preload = async () => {
@@ -279,7 +279,8 @@ export function useChatImageModelEffects(deps: ImageModelEffectsDeps): void {
         const classifierModel = downloadedModels.find(m => m.id === settings.classifierModelId);
         if (classifierModel?.filePath && !llmService.getLoadedModelPath()) {
           try {
-            if (!cancelled) await activeModelService.loadTextModel(settings.classifierModelId);
+            if (cancelled) return;
+            await activeModelService.loadTextModel(settings.classifierModelId);
           }
           catch (error) { if (!cancelled) logger.warn('[ChatScreen] Failed to preload classifier model:', error); }
         }
@@ -288,7 +289,7 @@ export function useChatImageModelEffects(deps: ImageModelEffectsDeps): void {
     preload();
     return () => { cancelled = true; };
 
-  }, [settings.imageGenerationMode, settings.autoDetectMethod, settings.classifierModelId, activeImageModelId, settings.modelLoadingStrategy]);
+  }, [settings.imageGenerationMode, settings.autoDetectMethod, settings.classifierModelId, activeImageModelId, settings.modelLoadingStrategy, downloadedModels]);
 }
 
 type ModelStateSyncDeps = {
@@ -305,11 +306,13 @@ type ModelStateSyncDeps = {
 };
 export function useChatModelStateSync(deps: ModelStateSyncDeps): void {
   const { activeModelInfo, activeModelId, activeModel, modelDeps, activeRemoteModel, activeRemoteTextModelId, isModelLoading, setSupportsVision, setSupportsToolCalling, setSupportsThinking } = deps;
+  const modelDepsRef = useRef(modelDeps);
+  modelDepsRef.current = modelDeps;
   useEffect(() => {
     if (activeModelInfo.isRemote) return;
-    if (activeModelId && activeModel) { ensureModelLoadedFn(modelDeps); }
+    if (activeModelId && activeModel) { ensureModelLoadedFn(modelDepsRef.current); }
 
-  }, [activeModelId]);
+  }, [activeModelId, activeModelInfo.isRemote, activeModel]);
   useEffect(() => {
     if (activeModelInfo.isRemote) {
       setSupportsVision(activeRemoteModel?.capabilities?.supportsVision ?? false);
@@ -319,7 +322,7 @@ export function useChatModelStateSync(deps: ModelStateSyncDeps): void {
       setSupportsVision(false);
     }
 
-  }, [activeModelInfo.isRemote, activeRemoteModel?.capabilities?.supportsVision, activeModel?.mmProjPath, isModelLoading]);
+  }, [activeModelInfo.isRemote, activeRemoteModel?.capabilities?.supportsVision, activeModel?.mmProjPath, isModelLoading, setSupportsVision]);
   useEffect(() => {
     if (activeRemoteTextModelId) {
       setSupportsToolCalling(activeRemoteModel?.capabilities?.supportsToolCalling ?? false);
@@ -332,5 +335,5 @@ export function useChatModelStateSync(deps: ModelStateSyncDeps): void {
       setSupportsThinking(false);
     }
 
-  }, [activeModelId, isModelLoading, activeRemoteTextModelId, activeRemoteModel?.capabilities?.supportsToolCalling, activeRemoteModel?.capabilities?.supportsThinking]);
+  }, [activeModelId, isModelLoading, activeRemoteTextModelId, activeRemoteModel?.capabilities?.supportsToolCalling, activeRemoteModel?.capabilities?.supportsThinking, setSupportsToolCalling, setSupportsThinking]);
 }
