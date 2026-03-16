@@ -353,9 +353,12 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
 
                 val rawModelDir = File(modelPath)
                 val canonicalPath = rawModelDir.canonicalPath
-                val allowedBase = reactApplicationContext.filesDir.canonicalPath
-                if (!canonicalPath.startsWith(allowedBase)) {
-                    promise.reject("INVALID_PATH", "Model path is outside the app's files directory")
+                val allowedBasePaths = listOfNotNull(
+                    reactApplicationContext.filesDir.canonicalPath,
+                    reactApplicationContext.getExternalFilesDir(null)?.canonicalPath,
+                )
+                if (allowedBasePaths.none { canonicalPath.startsWith(it) }) {
+                    promise.reject("INVALID_PATH", "Model path is outside the app's allowed directories")
                     return@launch
                 }
 

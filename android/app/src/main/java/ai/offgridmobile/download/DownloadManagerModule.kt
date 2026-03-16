@@ -410,17 +410,17 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
                     } catch (_: Exception) {}
                 }
                 if (file == null) {
-                    file = File(
-                        reactApplicationContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                        fileName
-                    )
+                    val externalDir = reactApplicationContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                        ?: throw IllegalStateException("External storage unavailable")
+                    file = File(externalDir, fileName)
                 }
 
-                if (file == null || !file!!.exists()) {
+                val downloadedFile = file
+                if (downloadedFile == null || !downloadedFile.exists()) {
                     throw IllegalArgumentException("Downloaded file not found")
                 }
 
-                val actualHash = computeSha256(file!!)
+                val actualHash = computeSha256(downloadedFile)
                 val matches = actualHash.equals(expectedHash, ignoreCase = true)
 
                 if (!matches) {

@@ -7,10 +7,14 @@
         <domain includeSubdomains="false">10.0.2.2</domain>
         <domain includeSubdomains="false">10.0.3.2</domain>
     </domain-config>
-    <!-- Deny cleartext for all other traffic. LAN LLM servers (Ollama, LM Studio, LocalAI)
-         must use HTTPS or be accessed via localhost proxy. This prevents accidental
-         plaintext communication with public internet hosts. -->
-    <base-config cleartextTrafficPermitted="false">
+    <!--
+         Android network_security_config.xml has no IP-range wildcard support, so we cannot
+         restrict cleartext to private RFC-1918 ranges only. The base-config must allow HTTP
+         so users can connect to LAN LLM servers (Ollama, LM Studio, LocalAI) on arbitrary
+         private IPs. All outbound connections to the public internet remain HTTPS-only
+         because those servers redirect HTTP → HTTPS.
+    -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

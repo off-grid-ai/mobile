@@ -22,28 +22,33 @@ export const useVoiceRecording = (): UseVoiceRecordingResult => {
   const [error, setError] = useState<string | null>(null);
   const isCancelled = useRef(false);
 
-  const onStartRef = useRef(() => {
+  const onStartRef = useRef<() => void>(null!);
+  onStartRef.current = () => {
     setIsRecording(true);
     setError(null);
-  });
-  const onEndRef = useRef(() => {
+  };
+  const onEndRef = useRef<() => void>(null!);
+  onEndRef.current = () => {
     setIsRecording(false);
-  });
-  const onResultsRef = useRef((results: string[]) => {
+  };
+  const onResultsRef = useRef<(results: string[]) => void>(null!);
+  onResultsRef.current = (results: string[]) => {
     if (!isCancelled.current && results.length > 0) {
       setFinalResult(results[0]);
       setPartialResult('');
     }
-  });
-  const onPartialResultsRef = useRef((results: string[]) => {
+  };
+  const onPartialResultsRef = useRef<(results: string[]) => void>(null!);
+  onPartialResultsRef.current = (results: string[]) => {
     if (!isCancelled.current && results.length > 0) {
       setPartialResult(results[0]);
     }
-  });
-  const onErrorRef = useRef((errorMsg: string) => {
+  };
+  const onErrorRef = useRef<(errorMsg: string) => void>(null!);
+  onErrorRef.current = (errorMsg: string) => {
     setError(errorMsg);
     setIsRecording(false);
-  });
+  };
 
   useEffect(() => {
     const initVoice = async () => {
