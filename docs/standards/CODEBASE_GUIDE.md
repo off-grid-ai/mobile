@@ -276,7 +276,8 @@ OffgridMobile/
 │   │   ├── llm.ts                       # LLMService — llama.rn context, streaming, GPU
 │   │   ├── llmTypes.ts                  # LLM type definitions (extracted)
 │   │   ├── llmMessages.ts              # LLM message building/formatting (extracted)
-│   │   ├── llmHelpers.ts               # LLM helper utilities (extracted)
+│   │   ├── llmHelpers.ts               # LLM helper utilities (extracted, includes 3-attempt init fallback)
+│   │   ├── llmSafetyChecks.ts          # Model validation (GGUF magic, version, size) + memory checks
 │   │   ├── activeModelService/          # Singleton — load/unload text & image models (folder)
 │   │   │   ├── index.ts                # Main service entry point
 │   │   │   ├── loaders.ts              # Model loading logic
@@ -367,6 +368,7 @@ OffgridMobile/
 │       ├── download/
 │       │   ├── DownloadManagerModule.kt # Background download native module
 │       │   ├── DownloadManagerPackage.kt # Package registration
+│       │   ├── DownloadForegroundService.kt # Foreground service to prevent download throttling
 │       │   └── DownloadCompleteBroadcastReceiver.kt # Broadcast receiver
 │       └── pdf/
 │           ├── PDFExtractorModule.kt    # Native PDF text extraction
@@ -720,7 +722,7 @@ PersistedDownloadInfo        # Persisted download state for restore after app ki
 
 ## 7. Core Services
 
-### LLMService (`src/services/llm.ts` + `llmTypes.ts`, `llmMessages.ts`, `llmHelpers.ts`)
+### LLMService (`src/services/llm.ts` + `llmTypes.ts`, `llmMessages.ts`, `llmHelpers.ts`, `llmSafetyChecks.ts`)
 
 The central service for on-device text inference.
 
@@ -736,6 +738,7 @@ The central service for on-device text inference.
 - Tool calling capability detection via jinja chat template introspection
 - Configurable KV cache type (f16, q8_0, q4_0) and flash attention toggle
 - Parameter constraint enforcement (GPU/flash attention/KV cache compatibility on Android)
+- Comprehensive diagnostic logging (`[LLM]` tags) throughout the load pipeline: model validation (file size, GGUF magic, GGUF version), user settings resolution, memory estimation, and numbered init attempts (1/3 GPU → 2/3 CPU → 3/3 CPU@2048) with full error chains on failure
 
 **Platform defaults:**
 
@@ -858,7 +861,7 @@ Passphrase management.
 Bridge to native download managers on both platforms. This is now the **only** download method (foreground downloads removed).
 
 - Downloads continue even after app is killed (both Android and iOS)
-- Android: Persists download state in SharedPreferences, 500ms polling for progress
+- Android: Persists download state in SharedPreferences, 500ms polling for progress; foreground service keeps downloads alive during doze
 - iOS: Uses background URLSession with delegate-based progress callbacks
 - Emits events: `DownloadProgress`, `DownloadComplete`, `DownloadError`
 - Moves completed files from Downloads temp to models directory
@@ -1008,15 +1011,21 @@ Stable Diffusion image generation via a native subprocess.
 
 #### DownloadManagerModule (`android/.../download/DownloadManagerModule.kt`)
 
-Android system DownloadManager integration.
+Android system DownloadManager integration with foreground service support.
 
 **Key native methods:**
-- `startDownload(url, fileName)` — enqueues in system DownloadManager
-- `cancelDownload(downloadId)`
+- `startDownload(url, fileName)` — enqueues in system DownloadManager and starts `DownloadForegroundService`
+- `cancelDownload(downloadId)` — cancels download and stops foreground service if no active downloads remain
 - `getActiveDownloads()` — reads from SharedPreferences
 - `getDownloadProgress(downloadId)` — queries DownloadManager
 - `moveCompletedDownload(downloadId, destPath)` — moves from temp to models dir
 - `startProgressPolling()` / `stopProgressPolling()` — 500ms interval
+
+**Foreground service lifecycle:**
+- `DownloadForegroundService` (dataSync type) starts when any download is enqueued
+- Automatically stopped via `stopForegroundServiceIfIdle()` when all downloads reach a terminal state (completed, failed, or cancelled)
+- Prevents Android doze/battery-saver from throttling or pausing large downloads
+- Non-fatal: if the service fails to start/stop, download continues normally
 
 ### iOS Native Modules
 

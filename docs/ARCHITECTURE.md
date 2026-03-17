@@ -27,6 +27,7 @@
 
 Multi-model LLM inference using llama.cpp compiled for ARM64 Android via llama.rn native bindings. Supports any GGUF-format model compatible with llama.cpp — downloaded from HuggingFace or imported directly from device storage:
 
+- **Diagnostic logging** — Structured `[LLM]` log tags trace the full model load pipeline: file validation, GGUF version, memory estimation, parameter resolution, and all three init fallback attempts with error chains
 - **Streaming inference** with real-time token callbacks
 - **OpenCL GPU offloading** on Qualcomm Adreno GPUs (experimental, optional)
 - **Context window management** with automatic truncation and continuation
@@ -720,7 +721,7 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
 }
 ```
 
-Downloads continue even when app is backgrounded or killed. Native notifications show progress. React Native polls for updates via `BroadcastReceiver`.
+Downloads continue even when app is backgrounded or killed. A `DownloadForegroundService` (dataSync type) runs while downloads are active, preventing Android from throttling or pausing large model downloads during doze/battery-saver. The service starts automatically when a download is enqueued and stops when all downloads reach a terminal state (completed, failed, or cancelled). Native notifications show progress. React Native polls for updates via `BroadcastReceiver`.
 
 **Race Condition Fix:**
 On slow emulators, download completion notification could arrive before React Native received `DownloadComplete` event. Fixed by tracking event delivery separately:
@@ -1099,7 +1100,7 @@ GGUF quantization methods and their trade-offs:
 
 **DownloadManager (Android only):**
 - Native Android DownloadManager wrapper
-- Background download support
+- Background download support with foreground service (`DownloadForegroundService`) to prevent OS throttling
 - Progress polling and event emission to React Native
 - Proper cleanup and error handling
 
@@ -1246,6 +1247,7 @@ OffgridMobile/
 │       ├── download/              # Background download manager
 │       │   ├── DownloadManagerModule.kt
 │       │   ├── DownloadManagerPackage.kt
+│       │   ├── DownloadForegroundService.kt # Keeps downloads alive during doze/battery-saver
 │       │   └── DownloadCompleteBroadcastReceiver.kt
 │       ├── localdream/            # local-dream native module
 │       │   ├── LocalDreamModule.kt
