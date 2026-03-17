@@ -368,7 +368,6 @@ OffgridMobile/
 │       ├── download/
 │       │   ├── DownloadManagerModule.kt # Background download native module
 │       │   ├── DownloadManagerPackage.kt # Package registration
-│       │   ├── DownloadForegroundService.kt # Foreground service to prevent download throttling
 │       │   └── DownloadCompleteBroadcastReceiver.kt # Broadcast receiver
 │       └── pdf/
 │           ├── PDFExtractorModule.kt    # Native PDF text extraction
@@ -861,7 +860,7 @@ Passphrase management.
 Bridge to native download managers on both platforms. This is now the **only** download method (foreground downloads removed).
 
 - Downloads continue even after app is killed (both Android and iOS)
-- Android: Persists download state in SharedPreferences, 500ms polling for progress; foreground service keeps downloads alive during doze
+- Android: Persists download state in SharedPreferences, 500ms polling for progress
 - iOS: Uses background URLSession with delegate-based progress callbacks
 - Emits events: `DownloadProgress`, `DownloadComplete`, `DownloadError`
 - Moves completed files from Downloads temp to models directory
@@ -1011,21 +1010,15 @@ Stable Diffusion image generation via a native subprocess.
 
 #### DownloadManagerModule (`android/.../download/DownloadManagerModule.kt`)
 
-Android system DownloadManager integration with foreground service support.
+Android system DownloadManager integration.
 
 **Key native methods:**
-- `startDownload(url, fileName)` — enqueues in system DownloadManager and starts `DownloadForegroundService`
-- `cancelDownload(downloadId)` — cancels download and stops foreground service if no active downloads remain
+- `startDownload(url, fileName)` — enqueues in system DownloadManager
+- `cancelDownload(downloadId)`
 - `getActiveDownloads()` — reads from SharedPreferences
 - `getDownloadProgress(downloadId)` — queries DownloadManager
 - `moveCompletedDownload(downloadId, destPath)` — moves from temp to models dir
 - `startProgressPolling()` / `stopProgressPolling()` — 500ms interval
-
-**Foreground service lifecycle:**
-- `DownloadForegroundService` (dataSync type) starts when any download is enqueued
-- Automatically stopped via `stopForegroundServiceIfIdle()` when all downloads reach a terminal state (completed, failed, or cancelled)
-- Prevents Android doze/battery-saver from throttling or pausing large downloads
-- Non-fatal: if the service fails to start/stop, download continues normally
 
 ### iOS Native Modules
 

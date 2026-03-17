@@ -721,7 +721,7 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
 }
 ```
 
-Downloads continue even when app is backgrounded or killed. A `DownloadForegroundService` (dataSync type) runs while downloads are active, preventing Android from throttling or pausing large model downloads during doze/battery-saver. The service starts automatically when a download is enqueued and stops when all downloads reach a terminal state (completed, failed, or cancelled). Native notifications show progress. React Native polls for updates via `BroadcastReceiver`.
+Downloads continue even when app is backgrounded or killed. Native notifications show progress. React Native polls for updates via `BroadcastReceiver`.
 
 **Race Condition Fix:**
 On slow emulators, download completion notification could arrive before React Native received `DownloadComplete` event. Fixed by tracking event delivery separately:
@@ -1100,7 +1100,7 @@ GGUF quantization methods and their trade-offs:
 
 **DownloadManager (Android only):**
 - Native Android DownloadManager wrapper
-- Background download support with foreground service (`DownloadForegroundService`) to prevent OS throttling
+- Background download support
 - Progress polling and event emission to React Native
 - Proper cleanup and error handling
 
@@ -1247,7 +1247,6 @@ OffgridMobile/
 │       ├── download/              # Background download manager
 │       │   ├── DownloadManagerModule.kt
 │       │   ├── DownloadManagerPackage.kt
-│       │   ├── DownloadForegroundService.kt # Keeps downloads alive during doze/battery-saver
 │       │   └── DownloadCompleteBroadcastReceiver.kt
 │       ├── localdream/            # local-dream native module
 │       │   ├── LocalDreamModule.kt
