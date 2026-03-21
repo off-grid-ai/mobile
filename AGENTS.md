@@ -1,58 +1,90 @@
-# Project Instructions
+# Agent Brief — Off Grid Necessity Labs Fork
 
-## Pre-Commit Quality Gates
+## Mission
+Transform the `alichherawalla/off-grid-mobile` React Native app into a
+native Kotlin + Jetpack Compose Android application while preserving 100%
+of the working on-device AI inference capabilities. The target device is a
+Samsung Galaxy S23 Ultra running Android 14.
 
-All quality gates run automatically via Husky on every `git commit`, scoped to the file types you staged:
+## What This Project Is
+An offline AI suite running LLMs (llama.cpp/GGUF), Stable Diffusion, and
+Whisper entirely on-device. The inference engine is written in C++ and
+bridged to Android via JNI. The current UI shell is React Native — we are
+replacing that shell with native Kotlin while keeping the C++/JNI core.
 
-| Staged file type | Checks that run automatically |
-|---|---|
-| `.ts` / `.tsx` / `.js` / `.jsx` | eslint (staged only), `tsc --noEmit`, `npm test` |
-| `.swift` | swiftlint (staged only), `npm run test:ios` |
-| `.kt` / `.kts` | `compileDebugKotlin` (type check), `lintDebug`, `npm run test:android` |
+## Your Operating Constraints
+1. **Read CLAUDE.md before every session.** It contains the sacred file list,
+   current phase, architecture target, and coding standards.
+2. **Read docs/ROADMAP.md.** Work within the current phase only.
+3. **Never modify native inference modules** unless the task explicitly names them.
+4. **Never add JS/npm dependencies.** We are eliminating the React Native layer.
+5. **Build via GitHub Actions only.** Do not attempt local Gradle builds.
+6. **Always write complete files.** No stubs, no `// TODO: implement`, no placeholders.
+7. **If uncertain about scope**, stop and ask before modifying sacred files.
 
-**Requirements:**
-- SwiftLint: `brew install swiftlint` (skipped with a warning if not installed)
-- Android checks require the Gradle wrapper in `android/`
+## Phase Execution Pattern
+For any task within the current phase:
+1. Read relevant docs listed in CLAUDE.md
+2. Identify exact files to create/modify (list them before starting)
+3. Write complete implementations
+4. Update docs/ROADMAP.md to mark task complete
+5. Commit with message: `feat(phase-N): description`
 
-Before writing new code, ensure tests exist for your changes. If the hook fails, fix the issue and recommit — never skip with `--no-verify`.
+## Output Quality Bar
+- Code must compile. If you cannot verify compilation, note it explicitly.
+- New Composables must handle loading, error, and empty states.
+- New ViewModels must expose a sealed `UiState`.
+- New repositories must return `Flow<Result<T>>`.
+- Hilt must wire every new dependency — no manual instantiation.
 
-## Testing Requirements
+## Hardware Context (for optimization decisions)
+- SoC: Snapdragon 8 Gen 2 (Cortex-X3 prime core @ 3.36GHz)
+- GPU: Adreno 740 (Vulkan 1.3, OpenCL 3.0)
+- NPU: Hexagon 780 (QNN SDK target, 26 TOPS)
+- RAM: 12GB LPDDR5X
+- Display: 6.8" Dynamic AMOLED 2X, 3088×1440, 120Hz, true black OLED
+- S Pen: Samsung S Pen with BLE, 4096 pressure levels, tilt support
+- Storage: UFS 3.1
 
-Always write **both** unit tests and integration tests for new features and significant changes:
+## New Features Being Added (by phase)
+- Phase 2: S Pen handwriting input → chat
+- Phase 3: AETHER RF context tool (IPC to AETHER app)
+- Phase 3: Vulkan text inference backend in llama.cpp
+- Phase 4: CODEX knowledge base tool (Supabase query)
+- Phase 4: OODA Loop situational awareness tool
+- Phase 5: QNN NPU text offload in llama.cpp
 
-- **Unit tests** (`__tests__/unit/`): Test individual functions, hooks, and store actions in isolation with mocked dependencies.
-- **Integration tests** (`__tests__/integration/`): Test how multiple modules work together end-to-end (e.g., service A calls service B which writes to database C). Use mocked native modules but real logic across layers.
-
-Do not consider a feature complete with only unit tests. Integration tests catch wiring bugs, incorrect data flow between layers, and lifecycle issues that unit tests miss.
-
-## Push = Create PR + Address Review
-
-When asked to push code, follow this full workflow:
-
-0. ensure that you are on a branch that is specific to this change i.e feat/new-feature or fix/bug-fix or docs/update-readme or chore/update-dependencies, or test/new-test, etc
-1. Push the branch to the remote (`git push -u origin <branch>`)
-2. Create a PR using `gh pr create`. Ensure that you are adhering to the PR template. **Do NOT include "Generated with Codex" or any AI attribution in PR descriptions.**
-3. Wait for Gemini to review the PR (poll with `gh pr checks` and `gh api repos/{owner}/{repo}/pulls/{number}/reviews` until a review appears)
-4. Once a review exists, pull down the review comments: `gh api repos/{owner}/{repo}/pulls/{number}/comments` and `gh api repos/{owner}/{repo}/pulls/{number}/reviews`
-5. Address every review comment — fix the code, re-run the quality gates (tests, lint, tsc).
-6. Reply to **each** review comment individually on the PR using `gh api` (use `/pulls/comments/{id}/replies` endpoint). Every comment must get its own reply confirming what was done — do not post a single summary comment.
-7. Push the fixes
-8. Report what was changed in response to the review
-
-## CI Review Loop
-
-The repo has three automated reviewers on every PR. After pushing, loop until all are green:
-
-| Reviewer | What it checks | How to address |
-|---|---|---|
-| **Gemini Bot** | Code quality, style, logic issues | Read comments via `gh api`, fix code or reply explaining why it's fine, then comment `/gemini review` to trigger a fresh pass |
-| **Codecov** | Test coverage thresholds | Add missing tests, ensure new code is covered. Check the Codecov report for uncovered lines |
-| **SonarCloud** | Security hotspots, code smells, duplications, bugs | Fix flagged issues — especially security hotspots and duplications. Resolve quality gate failures before merging |
-
-**Workflow:**
-1. Push code → wait for all three reviewers to report
-2. Pull down Gemini comments, Codecov report, and SonarCloud findings
-3. Fix issues: code changes for Gemini/SonarCloud, add tests for Codecov
-4. Re-run local quality gates (`npm run lint && npm test && npx tsc --noEmit`)
-5. Push fixes, comment `/gemini review` on the PR to re-trigger Gemini
-6. Repeat until all three reviewers pass with no blocking issues
+## Repo Structure After Migration
+```
+/
+├── CLAUDE.md                    # This project's memory for Claude Code
+├── AGENTS.md                    # This file
+├── docs/
+│   ├── ROADMAP.md
+│   ├── ARCHITECTURE.md
+│   ├── NATIVE_LAYER.md
+│   └── hardware/S23_ULTRA.md
+├── .github/workflows/
+│   ├── build-debug-apk.yml
+│   └── build-release-apk.yml
+├── android/                     # THE SACRED LAYER — inference lives here
+│   └── app/src/main/
+│       ├── cpp/                 # llama.cpp JNI + CMakeLists
+│       └── java/ai/offgridmobile/
+│           ├── inference/       # LlamaModule, StableDiffusionModule
+│           ├── whisper/         # WhisperModule
+│           ├── download/        # DownloadManagerModule
+│           └── modelmanager/    # ModelManagerModule
+└── app/src/main/java/ai/offgridmobile/   # NEW Compose shell lives here
+    ├── ui/
+    │   ├── screens/
+    │   ├── components/
+    │   ├── viewmodels/
+    │   └── theme/
+    ├── data/
+    │   ├── local/
+    │   └── repository/
+    ├── tools/
+    ├── spen/
+    └── di/
+```

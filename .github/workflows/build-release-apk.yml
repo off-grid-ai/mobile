@@ -1,0 +1,80 @@
+name: Build Release APK (Manual)
+
+# Release builds are manual-only until Phase 5 signing config is set up
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Version name (e.g. 1.0.0-alpha)'
+        required: true
+      release_notes:
+        description: 'Brief release notes'
+        required: false
+        default: 'Internal build'
+
+jobs:
+  build-release:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK r26d
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "ndk;26.3.11579264" \
+            "cmake;3.22.1" \
+            "build-tools;34.0.0" \
+            "platforms;android-34"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-release-${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Configure local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/26.3.11579264" >> android/local.properties
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      # NOTE: Using debug signing until Phase 5 release signing is configured
+      # Replace with assembleRelease + keystore secrets when ready
+      - name: Build Release APK (debug-signed)
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: offgrid-release-v${{ github.event.inputs.version_name }}
+          path: android/app/build/outputs/apk/release/
+          retention-days: 30

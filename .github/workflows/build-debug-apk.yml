@@ -1,0 +1,139 @@
+name: Build Debug APK
+
+on:
+  push:
+    branches:
+      - main
+      - 'dev/**'
+      - 'feat/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual trigger'
+        required: false
+        default: 'Manual build'
+
+jobs:
+  build:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Node.js (for React Native build phase — remove in Phase 2+) ──────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ── JDK ──────────────────────────────────────────────────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # ── Android SDK ───────────────────────────────────────────────────────
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ── NDK (llama.cpp requires specific NDK) ────────────────────────────
+      - name: Install NDK r26d
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "ndk;26.3.11579264" \
+            "cmake;3.22.1" \
+            "build-tools;34.0.0" \
+            "platforms;android-34"
+
+      # ── Gradle Cache ─────────────────────────────────────────────────────
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # ── npm Cache ────────────────────────────────────────────────────────
+      - name: Cache npm packages
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      # ── Install JS dependencies ───────────────────────────────────────────
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ── Set NDK path ─────────────────────────────────────────────────────
+      - name: Configure local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/26.3.11579264" >> android/local.properties
+
+      # ── Grant Gradle execute permission ──────────────────────────────────
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      # ── Build ─────────────────────────────────────────────────────────────
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/26.3.11579264
+
+      # ── Get version info for artifact naming ─────────────────────────────
+      - name: Get build info
+        id: build_info
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "branch=$(echo ${GITHUB_REF#refs/heads/} | sed 's/\//-/g')" >> $GITHUB_OUTPUT
+          echo "date=$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
+
+      # ── Upload APK artifact ──────────────────────────────────────────────
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: offgrid-debug-${{ steps.build_info.outputs.branch }}-${{ steps.build_info.outputs.sha_short }}-${{ steps.build_info.outputs.date }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+      # ── Post build summary ───────────────────────────────────────────────
+      - name: Build summary
+        run: |
+          echo "## ✅ Debug APK Built" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ steps.build_info.outputs.branch }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | ${{ steps.build_info.outputs.sha_short }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Built at | ${{ steps.build_info.outputs.date }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the APK from the **Artifacts** section above ↑" >> $GITHUB_STEP_SUMMARY
+
+      # ── On failure: upload logs ───────────────────────────────────────────
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ steps.build_info.outputs.sha_short }}
+          path: |
+            android/app/build/reports/
+            android/.gradle/
+          retention-days: 7
