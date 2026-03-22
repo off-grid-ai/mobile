@@ -47,10 +47,16 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # ── NDK 27.1 (matches ndkVersion in android/build.gradle) ─────────────
-      - name: Install NDK 27.1 and build tools
+      # ── NDK versions ──────────────────────────────────────────────────────
+      # Install both NDK versions:
+      #   27.1.12297006 — declared in android/build.gradle (app + Vulkan)
+      #   27.0.12077973 — declared by @op-engineering/op-sqlite autolinking
+      # ndk.dir is intentionally NOT written to local.properties so AGP
+      # resolves the NDK per-module using each module's android.ndkVersion.
+      - name: Install NDK versions and build tools
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "ndk;27.0.12077973" \
             "ndk;27.1.12297006" \
             "cmake;3.22.1" \
             "build-tools;36.0.0" \
@@ -80,11 +86,10 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      # ── Set NDK path ─────────────────────────────────────────────────────
+      # ── SDK path only — no ndk.dir (each module resolves its own NDK) ────
       - name: Configure local.properties
         run: |
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-          echo "ndk.dir=$ANDROID_HOME/ndk/27.1.12297006" >> android/local.properties
 
       # ── Grant Gradle execute permission ──────────────────────────────────
       - name: Make gradlew executable
