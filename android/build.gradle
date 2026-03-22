@@ -15,6 +15,10 @@ buildscript {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        // Kotlin Compose Compiler plugin (Kotlin 2.0+ bundled approach)
+        classpath("org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.1.20")
+        // Hilt dependency injection
+        classpath("com.google.dagger:hilt-android-gradle-plugin:2.51.1")
     }
 }
 

@@ -29,7 +29,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # ── Node.js (for React Native build phase — remove in Phase 2+) ──────
+      # ── Node.js (needed for RN Gradle plugin that provides react-android artifact) ──
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
@@ -47,14 +47,14 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # ── NDK (llama.cpp requires specific NDK) ────────────────────────────
-      - name: Install NDK r26d
+      # ── NDK 27.1 (matches ndkVersion in android/build.gradle) ─────────────
+      - name: Install NDK 27.1 and build tools
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-            "ndk;26.3.11579264" \
+            "ndk;27.1.12297006" \
             "cmake;3.22.1" \
-            "build-tools;34.0.0" \
-            "platforms;android-34"
+            "build-tools;36.0.0" \
+            "platforms;android-36"
 
       # ── Gradle Cache ─────────────────────────────────────────────────────
       - name: Cache Gradle packages
@@ -84,7 +84,7 @@ jobs:
       - name: Configure local.properties
         run: |
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-          echo "ndk.dir=$ANDROID_HOME/ndk/26.3.11579264" >> android/local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/27.1.12297006" >> android/local.properties
 
       # ── Grant Gradle execute permission ──────────────────────────────────
       - name: Make gradlew executable
@@ -96,7 +96,7 @@ jobs:
         run: ./gradlew assembleDebug --no-daemon --stacktrace
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/26.3.11579264
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
 
       # ── Get version info for artifact naming ─────────────────────────────
       - name: Get build info

@@ -1,3 +1,62 @@
 <resources>
     <string name="app_name">Off Grid</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_chat">Chat</string>
+    <string name="nav_models">Models</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Home screen -->
+    <string name="home_title">Conversations</string>
+    <string name="home_new_chat">New Chat</string>
+    <string name="home_empty_title">No conversations yet</string>
+    <string name="home_empty_subtitle">Download a model in the Models tab to get started</string>
+    <string name="home_delete_conversation">Delete conversation</string>
+    <string name="home_updated">Updated %1$s</string>
+
+    <!-- Chat screen -->
+    <string name="chat_no_model">No model loaded</string>
+    <string name="chat_input_hint">Message…</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_stop">Stop generation</string>
+    <string name="chat_thinking">Thinking…</string>
+    <string name="chat_error_dismiss">Dismiss</string>
+    <string name="chat_navigate_back">Back</string>
+
+    <!-- Models screen -->
+    <string name="models_title">Models</string>
+    <string name="models_empty_title">No models downloaded</string>
+    <string name="models_empty_subtitle">Paste a Hugging Face direct-download URL below and tap Download</string>
+    <string name="models_download_url_hint">Hugging Face download URL</string>
+    <string name="models_filename_hint">File name (e.g. model.gguf)</string>
+    <string name="models_model_id_hint">Model ID (e.g. Llama-3.2-3B-Q4)</string>
+    <string name="models_download_button">Download</string>
+    <string name="models_active_badge">Active</string>
+    <string name="models_set_active">Set as active</string>
+    <string name="models_delete">Delete</string>
+    <string name="models_cancel_download">Cancel</string>
+    <string name="models_size_format">%1$.1f GB</string>
+    <string name="models_size_mb_format">%1$.0f MB</string>
+    <string name="models_download_progress">%1$d%%</string>
+    <string name="models_download_error">Download failed: %1$s</string>
+    <string name="models_dismiss_error">Dismiss</string>
+    <string name="models_downloaded_at">Downloaded %1$s</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_inference_section">Inference</string>
+    <string name="settings_thread_count">CPU Threads</string>
+    <string name="settings_thread_count_value">%1$d threads</string>
+    <string name="settings_context_length">Context Length</string>
+    <string name="settings_context_length_value">%1$d tokens</string>
+    <string name="settings_temperature">Temperature</string>
+    <string name="settings_temperature_value">%.2f</string>
+    <string name="settings_top_p">Top-P</string>
+    <string name="settings_top_p_value">%.2f</string>
+    <string name="settings_data_section">Data</string>
+    <string name="settings_clear_history">Clear conversation history</string>
+    <string name="settings_clear_history_confirm_title">Clear all conversations?</string>
+    <string name="settings_clear_history_confirm_body">This will permanently delete all conversation history. This action cannot be undone.</string>
+    <string name="settings_clear_confirm">Clear</string>
+    <string name="settings_cancel">Cancel</string>
 </resources>

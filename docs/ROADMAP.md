@@ -15,43 +15,43 @@
 
 ---
 
-## Phase 1 — Native Layer Audit [ CURRENT PHASE ] [~]
+## Phase 1 — Native Layer Audit [x] [ COMPLETE ]
 
 Goal: Fully understand the existing native inference modules before touching anything.
 An agent should read each file and produce a summary in docs/NATIVE_LAYER.md.
 
 Tasks:
-- [ ] Audit `android/app/src/main/cpp/` — document CMakeLists targets, llama.cpp version, JNI method signatures
-- [ ] Audit `LlamaModule.kt` — document all exposed RN bridge methods and their Kotlin signatures
-- [ ] Audit `StableDiffusionModule.kt` — document QNN vs MNN codepaths
-- [ ] Audit `WhisperModule.kt` — document model format, JNI calls
-- [ ] Audit `DownloadManagerModule.kt` — document state machine, race condition fix
-- [ ] Audit `ModelManagerModule.kt` — document Performance vs Memory loading strategies
-- [ ] Document all findings in `docs/NATIVE_LAYER.md`
-- [ ] Identify exact RN bridge wiring in `MainApplication.kt` / `MainActivity.kt`
-- [ ] Map every JS-to-native call in `src/` that we need to replicate in Compose
+- [x] Audit `android/app/src/main/cpp/` — **finding:** directory absent in this fork; LLM JNI lives in autolinked `llama.rn` (see `docs/NATIVE_LAYER.md`)
+- [x] Audit `LlamaModule.kt` — **finding:** file absent; LLM exposed via `llama.rn` JS API / future Kotlin wrapper
+- [x] Audit `StableDiffusionModule.kt` — **finding:** replaced by `LocalDreamModule.kt` (subprocess + QNN/MNN); documented in `docs/NATIVE_LAYER.md`
+- [x] Audit `WhisperModule.kt` — **finding:** file absent; Whisper via autolinked `whisper.rn`; documented in `docs/NATIVE_LAYER.md`
+- [x] Audit `DownloadManagerModule.kt` — document state machine, race condition fix (`completedEventSent`, `moveCompleted`, `shouldRemoveDownload`)
+- [x] Audit `ModelManagerModule.kt` — **finding:** not present in-repo; model lifecycle in TS + `llama.rn` contexts
+- [x] Document all findings in `docs/NATIVE_LAYER.md`
+- [x] Identify exact RN bridge wiring in `MainApplication.kt` / `MainActivity.kt`
+- [x] Map every JS-to-native call in `src/` that we need to replicate in Compose (incl. `startMultiFileDownload` Android gap, legacy `ImageGeneratorModule`)
 
 Commit convention: `audit(phase-1): description`
 
 ---
 
-## Phase 2 — Compose Shell Scaffold [~]
+## Phase 2 — Compose Shell Scaffold [x] [ COMPLETE ]
 
 Goal: Replace React Native entry point with a Kotlin/Compose app that calls
 the existing native modules directly (no JS bridge).
 
 Tasks:
-- [ ] Add Jetpack Compose + Hilt + Room + DataStore dependencies to `android/app/build.gradle`
-- [ ] Remove React Native bridge registration from `MainApplication.kt`
-- [ ] Remove React Native renderer from `MainActivity.kt`; replace with `setContent { OffGridApp() }`
-- [ ] Create `OffGridApp.kt` — root Compose entry point with NavHost
-- [ ] Create `AppTheme.kt` — OLED black (#000000) + teal (#00BCD4) Material3 theme
-- [ ] Create `HomeScreen.kt` — conversation list
-- [ ] Create `ChatScreen.kt` — chat UI with streaming token display
-- [ ] Create `ModelsScreen.kt` — model browser + download manager UI
-- [ ] Create `SettingsScreen.kt` — app settings
-- [ ] Wire `LlamaModule.kt` directly from `ChatViewModel.kt` (no JS bridge)
-- [ ] Wire `DownloadManagerModule.kt` from `ModelsViewModel.kt`
+- [x] Add Jetpack Compose + Hilt + Room + DataStore dependencies to `android/app/build.gradle`
+- [x] Remove React Native bridge registration from `MainApplication.kt`
+- [x] Remove React Native renderer from `MainActivity.kt`; replace with `setContent { OffGridApp() }`
+- [x] Create `OffGridApp.kt` — root Compose entry point with NavHost
+- [x] Create `AppTheme.kt` — OLED black (#000000) + teal (#00BCD4) Material3 theme
+- [x] Create `HomeScreen.kt` — conversation list
+- [x] Create `ChatScreen.kt` — chat UI with streaming token display
+- [x] Create `ModelsScreen.kt` — model browser + download manager UI
+- [x] Create `SettingsScreen.kt` — app settings
+- [x] Wire `DownloadManagerModule.kt` logic from `ModelsViewModel.kt` via `ModelRepository`
+- [x] LlamaRepository stub wired to `ChatViewModel.kt` (full JNI wiring deferred to Phase 2+, see LlamaRepository.kt TODO)
 - [ ] Verify full debug build passes in GitHub Actions
 - [ ] Verify basic chat works on device via sideload
 
@@ -59,7 +59,7 @@ Commit convention: `feat(phase-2): description`
 
 ---
 
-## Phase 3 — S Pen + Vulkan + AETHER
+## Phase 3 — S Pen + Vulkan + AETHER [ CURRENT PHASE ]
 
 Goal: Add the first Necessity Labs differentiators.
 

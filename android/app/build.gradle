@@ -1,5 +1,8 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "org.jetbrains.kotlin.plugin.compose"
+apply plugin: "kotlin-kapt"
+apply plugin: "dagger.hilt.android.plugin"
 apply plugin: "com.facebook.react"
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
 
@@ -105,6 +108,9 @@ android {
     lint {
         baseline = file("lint-baseline.xml")
     }
+    buildFeatures {
+        compose = true
+    }
     testOptions {
         unitTests {
             includeAndroidResources = true
@@ -136,6 +142,10 @@ android {
     }
 }
 
+kapt {
+    correctErrorTypes = true
+}
+
 configurations.all {
     exclude group: 'com.android.support'
 }
@@ -150,11 +160,49 @@ dependencies {
         implementation jscFlavor
     }
 
-    // Coroutines for async operations (used by LocalDreamModule)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    // Coroutines for async operations
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     // PDF text extraction (used by PDFExtractorModule)
     implementation("io.legere:pdfiumandroid:1.0.35")
+
+    // Core AndroidX
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+
+    // Jetpack Compose BOM — pins all compose-* versions together
+    def composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    implementation composeBom
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Navigation Compose
+    implementation("androidx.navigation:navigation-compose:2.8.4")
+
+    // Hilt dependency injection
+    implementation("com.google.dagger:hilt-android:2.51.1")
+    kapt("com.google.dagger:hilt-compiler:2.51.1")
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+
+    // Room persistence
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
+
+    // DataStore Preferences (replaces AsyncStorage)
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Lifecycle — ViewModel + state collection in Compose
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+
+    // Coil3 image loading
+    implementation("io.coil-kt.coil3:coil-compose:3.0.4")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.13")
