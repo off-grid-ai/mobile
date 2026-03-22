@@ -88,6 +88,30 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1773572929
         versionName "0.0.81"
+
+        // ── Phase 3: Vulkan backend for llama.rn ──────────────────────────────
+        // llama.rn builds its own CMakeLists.txt via autolinking. The RN Gradle
+        // plugin does not expose a hook to inject cmake arguments into that build.
+        //
+        // To enable GGML_VULKAN=ON, apply the patch MANUALLY after `npm install`:
+        //
+        //   FILE: node_modules/llama.rn/android/CMakeLists.txt
+        //   FIND:   option(GGML_VULKAN "llama: use Vulkan" OFF)
+        //    -OR-   set(GGML_VULKAN OFF ...)
+        //   CHANGE: set value to ON
+        //
+        //   FILE: node_modules/llama.rn/android/build.gradle
+        //   FIND:   externalNativeBuild { cmake { ... } }
+        //   ADD inside cmake block:
+        //     arguments "-DGGML_VULKAN=ON"
+        //
+        // This patch is automated by the postinstall script in package.json
+        // (see scripts.postinstall → scripts/patch-llama-vulkan.js).
+        //
+        // If llama.rn ever exposes a top-level cmake arguments property, replace
+        // the patch script with:
+        //   react { llamaRnCmakeArgs = ["-DGGML_VULKAN=ON"] }
+        // ─────────────────────────────────────────────────────────────────────
     }
     signingConfigs {
         debug {

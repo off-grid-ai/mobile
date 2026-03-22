@@ -28,8 +28,8 @@
 │  Model metadata │          │  WhisperModule             │
 │  Settings       │          │  DownloadManagerModule     │
 └─────────────────┘          │  ModelManagerModule        │
-                             │  SpenInputModule (new)     │
-                             │  AetherContextBridge (new) │
+                             │  SpenInputModule           │
+                             │  AetherContextBridge       │
                              └──────────┬─────────────────┘
                                         │ JNI
                              ┌──────────▼─────────────────┐
@@ -53,13 +53,9 @@ ChatViewModel
     ├── detects tool_use in model response
     │
     └── ToolDispatcher
-            ├── WebSearchTool        (existing)
-            ├── CalculatorTool       (existing)
-            ├── DateTimeTool         (existing)
-            ├── DeviceInfoTool       (existing)
-            ├── KnowledgeBaseTool    (existing → wire to CODEX)
-            ├── AetherTool           (new Phase 3)
-            └── OodaTool             (new Phase 4)
+            ├── AetherTool           (Phase 3 ✓ — RF environment snapshot)
+            ├── CodexTool            (Phase 4 — knowledge base)
+            └── OodaTool             (Phase 4 — situational awareness)
 ```
 
 ## Data Flow: User Message → Token Stream

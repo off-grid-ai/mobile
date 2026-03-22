@@ -59,25 +59,25 @@ Commit convention: `feat(phase-2): description`
 
 ---
 
-## Phase 3 — S Pen + Vulkan + AETHER [ CURRENT PHASE ]
+## Phase 3 — S Pen + Vulkan + AETHER [x] [ COMPLETE ]
 
 Goal: Add the first Necessity Labs differentiators.
 
 Tasks:
-- [ ] Create `SpenInputModule.kt` — Samsung S Pen → text via HandwritingGesture API
-- [ ] Wire S Pen input into `ChatScreen.kt` as alternative input method
-- [ ] Enable Vulkan backend in llama.cpp CMakeLists (`-DGGML_VULKAN=ON`)
-- [ ] Add Vulkan device selection in `LlamaModule.kt`
-- [ ] Benchmark: measure tok/s delta CPU vs Vulkan on Adreno 740
-- [ ] Create `AetherContextBridge.kt` — IPC client reading AETHER RF environment snapshot
-- [ ] Add AETHER as a tool in the tool calling system
-- [ ] Update `ChatScreen.kt` to show active context sources indicator
+- [x] Create `SpenInputModule.kt` — Samsung S Pen → text via HandwritingGesture API + Samsung SpenRemote SDK (Air Actions via reflection; graceful fallback on non-Samsung devices)
+- [x] Wire S Pen input into `ChatScreen.kt` — hover overlay, teal pen icon in input bar, populate TextField on `SpenInputState.Committed`
+- [x] Enable Vulkan backend in llama.rn CMakeLists (`-DGGML_VULKAN=ON`) via `scripts/patch-llama-vulkan.js` (idempotent postinstall patch)
+- [x] Add Vulkan device selection — `VulkanConfig.kt` + `InferenceBackend` sealed class; backend selector (Auto/CPU/Vulkan/QNN-stub) in `SettingsScreen.kt` backed by DataStore
+- [ ] Benchmark: measure tok/s delta CPU vs Vulkan on Adreno 740 ← deferred to after first Vulkan build
+- [x] Create `AetherContextBridge.kt` — ContentProvider IPC reading AETHER RF environment snapshot; graceful empty fallback when AETHER not installed; 30-second polling `Flow<AetherSnapshot>`
+- [x] Add AETHER as a tool in the tool calling system — `Tool` interface, `AetherTool`, `ToolDispatcher`, wired into `ChatViewModel`
+- [x] Update `ChatScreen.kt` to show active context sources indicator (teal RF row below top bar) + AETHER `ModalBottomSheet` with live snapshot
 
 Commit convention: `feat(phase-3): description`
 
 ---
 
-## Phase 4 — CODEX + OODA Integration
+## Phase 4 — CODEX + OODA Integration [ CURRENT PHASE ]
 
 Goal: Make the inference layer aware of your personal knowledge graph and
 physical environment.

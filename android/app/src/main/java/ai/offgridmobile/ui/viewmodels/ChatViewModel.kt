@@ -2,15 +2,22 @@ package ai.offgridmobile.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ai.offgridmobile.aether.AetherContextBridge
+import ai.offgridmobile.aether.AetherSnapshot
 import ai.offgridmobile.data.local.entities.Message
 import ai.offgridmobile.data.repository.ConversationRepository
-import ai.offgridmobile.data.repository.LlamaModelParams
 import ai.offgridmobile.data.repository.LlamaRepository
+import ai.offgridmobile.spen.SpenInputModule
+import ai.offgridmobile.spen.SpenInputState
+import ai.offgridmobile.tools.ToolDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -18,6 +25,9 @@ import javax.inject.Inject
 class ChatViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val llamaRepository: LlamaRepository,
+    val spenInputModule: SpenInputModule,
+    private val aetherContextBridge: AetherContextBridge,
+    private val toolDispatcher: ToolDispatcher,
 ) : ViewModel() {
 
     sealed class ChatUiState {
@@ -33,6 +43,29 @@ class ChatViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow<ChatUiState>(ChatUiState.Loading)
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
+
+    /** Live RF environment snapshot from AETHER (null when AETHER not installed). */
+    val aetherSnapshot: StateFlow<AetherSnapshot?> = aetherContextBridge.snapshotFlow
+        .catch { emit(AetherSnapshot(emptyList(), emptyList(), null, emptyList(), java.time.Instant.now())) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Whether AETHER has data for the context sources indicator. */
+    val isAetherActive: StateFlow<Boolean> = MutableStateFlow(false).also { flow ->
+        viewModelScope.launch {
+            aetherSnapshot.collect { snapshot ->
+                flow.value = snapshot != null &&
+                    (snapshot.wifiNetworks.isNotEmpty() ||
+                        snapshot.bluetoothDevices.isNotEmpty() ||
+                        snapshot.cellularInfo != null)
+            }
+        }
+    }.asStateFlow()
+
+    /** S Pen connection state forwarded from [SpenInputModule]. */
+    val isStylusConnected: StateFlow<Boolean> = spenInputModule.isStylusConnected
+
+    /** Current S Pen input state — UI observes this to populate the TextField. */
+    val spenInputState: StateFlow<SpenInputState> = spenInputModule.state
 
     private var conversationId: Long = -1L
     private var generationJob: Job? = null
@@ -69,7 +102,6 @@ class ChatViewModel @Inject constructor(
     fun sendMessage(content: String) {
         if (content.isBlank()) return
         viewModelScope.launch {
-            // Persist the user turn
             conversationRepository.addMessage(conversationId, "user", content)
 
             val current = _uiState.value
@@ -77,28 +109,45 @@ class ChatViewModel @Inject constructor(
                 _uiState.value = current.copy(isGenerating = true, streamingText = "")
             }
 
-            // Stream the assistant response
             generationJob = launch {
                 var accumulated = ""
                 llamaRepository.tokenStream(content).collect { result ->
                     result.fold(
                         onSuccess = { token ->
                             accumulated += token
+
+                            // Check for tool_use block in accumulated response
+                            val toolResult = toolDispatcher.maybeDispatch(accumulated)
+                            if (toolResult != null) {
+                                // Persist the model's tool call turn
+                                conversationRepository.addMessage(
+                                    conversationId,
+                                    "assistant",
+                                    accumulated,
+                                )
+                                // Inject tool result and continue generation
+                                val toolContent = "[tool_result: ${toolResult.toolName}]\n${toolResult.result}"
+                                conversationRepository.addMessage(conversationId, "tool", toolContent)
+                                accumulated = ""
+                                val s = _uiState.value
+                                if (s is ChatUiState.Success) {
+                                    _uiState.value = s.copy(streamingText = "")
+                                }
+                                return@collect
+                            }
+
                             val s = _uiState.value
                             if (s is ChatUiState.Success) {
                                 _uiState.value = s.copy(streamingText = accumulated)
                             }
                         },
                         onFailure = { err ->
-                            _uiState.value = ChatUiState.Error(
-                                err.message ?: "Generation failed"
-                            )
+                            _uiState.value = ChatUiState.Error(err.message ?: "Generation failed")
                             return@collect
                         },
                     )
                 }
 
-                // Persist the assistant turn (only if not cancelled mid-stream)
                 if (accumulated.isNotEmpty()) {
                     conversationRepository.addMessage(conversationId, "assistant", accumulated)
                 }
@@ -119,6 +168,16 @@ class ChatViewModel @Inject constructor(
         if (s is ChatUiState.Success) {
             _uiState.value = s.copy(isGenerating = false, streamingText = "")
         }
+    }
+
+    /** Called by ChatScreen when S Pen handwriting commits text into the input field. */
+    fun onSpenHandwritingCommitted(text: String) {
+        spenInputModule.onHandwritingCommitted(text)
+    }
+
+    /** Called by ChatScreen after consuming the Committed state from [spenInputState]. */
+    fun resetSpenState() {
+        spenInputModule.reset()
     }
 
     fun dismissError() {

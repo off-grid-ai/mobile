@@ -1,5 +1,6 @@
 package ai.offgridmobile.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -39,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ai.offgridmobile.R
+import ai.offgridmobile.inference.InferenceBackend
 import ai.offgridmobile.ui.theme.OledBlack
 import ai.offgridmobile.ui.theme.OledSurface
 import ai.offgridmobile.ui.theme.TealPrimary
@@ -86,10 +90,14 @@ fun SettingsScreen(
             is SettingsViewModel.SettingsUiState.Success -> {
                 SettingsContent(
                     settings = state.settings,
+                    isVulkanSupported = viewModel.vulkanConfig.isVulkanSupported,
+                    isAdreno740 = viewModel.vulkanConfig.isAdreno740,
+                    devicePreferredBackend = viewModel.vulkanConfig.preferredBackend,
                     onThreadCountChange = viewModel::updateThreadCount,
                     onContextLengthChange = viewModel::updateContextLength,
                     onTemperatureChange = viewModel::updateTemperature,
                     onTopPChange = viewModel::updateTopP,
+                    onInferenceBackendChange = viewModel::updateInferenceBackend,
                     onClearHistory = viewModel::requestClearHistory,
                     modifier = Modifier
                         .fillMaxSize()
@@ -110,10 +118,14 @@ fun SettingsScreen(
 @Composable
 private fun SettingsContent(
     settings: SettingsViewModel.AppSettings,
+    isVulkanSupported: Boolean,
+    isAdreno740: Boolean,
+    devicePreferredBackend: InferenceBackend,
     onThreadCountChange: (Int) -> Unit,
     onContextLengthChange: (Int) -> Unit,
     onTemperatureChange: (Float) -> Unit,
     onTopPChange: (Float) -> Unit,
+    onInferenceBackendChange: (InferenceBackend) -> Unit,
     onClearHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -125,10 +137,21 @@ private fun SettingsContent(
     ) {
         SectionHeader(stringResource(R.string.settings_inference_section))
 
+        // Inference backend selector
+        InferenceBackendSetting(
+            currentBackend = settings.inferenceBackend,
+            isVulkanSupported = isVulkanSupported,
+            isAdreno740 = isAdreno740,
+            devicePreferred = devicePreferredBackend,
+            onBackendChange = onInferenceBackendChange,
+        )
+
+        Spacer(Modifier.height(4.dp))
+
         IntSliderSetting(
             label = stringResource(R.string.settings_thread_count),
             value = settings.threadCount,
-            valueLabel = stringResource(R.string.settings_thread_count_value, settings.threadCount),
+            formatValue = { stringResource(R.string.settings_thread_count_value, it) },
             range = 1..8,
             onValueChange = onThreadCountChange,
         )
@@ -141,7 +164,7 @@ private fun SettingsContent(
         FloatSliderSetting(
             label = stringResource(R.string.settings_temperature),
             value = settings.temperature,
-            valueLabel = stringResource(R.string.settings_temperature_value, settings.temperature),
+            formatValue = { stringResource(R.string.settings_temperature_value, it) },
             range = 0f..2f,
             steps = 19,
             onValueChange = onTemperatureChange,
@@ -150,7 +173,7 @@ private fun SettingsContent(
         FloatSliderSetting(
             label = stringResource(R.string.settings_top_p),
             value = settings.topP,
-            valueLabel = stringResource(R.string.settings_top_p_value, settings.topP),
+            formatValue = { stringResource(R.string.settings_top_p_value, it) },
             range = 0f..1f,
             steps = 9,
             onValueChange = onTopPChange,
@@ -168,10 +191,7 @@ private fun SettingsContent(
             colors = ButtonDefaults.outlinedButtonColors(
                 contentColor = MaterialTheme.colorScheme.error,
             ),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
-            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
         ) {
             Text(stringResource(R.string.settings_clear_history))
         }
@@ -179,6 +199,100 @@ private fun SettingsContent(
         Spacer(Modifier.height(88.dp))
     }
 }
+
+// ── Inference backend selector ────────────────────────────────────────────────
+
+@Composable
+private fun InferenceBackendSetting(
+    currentBackend: InferenceBackend,
+    isVulkanSupported: Boolean,
+    isAdreno740: Boolean,
+    devicePreferred: InferenceBackend,
+    onBackendChange: (InferenceBackend) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.settings_inference_backend),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            if (isVulkanSupported) {
+                Text(
+                    text = stringResource(
+                        R.string.settings_inference_backend_device_supports,
+                        if (isAdreno740) "Adreno 740 · Vulkan 1.3" else "Vulkan"
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TealPrimary,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        val options: List<Pair<InferenceBackend, Boolean>> = listOf(
+            InferenceBackend.Auto to true,
+            InferenceBackend.CPU to true,
+            InferenceBackend.Vulkan to isVulkanSupported,
+            InferenceBackend.QNN to false, // Phase 5
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            options.forEach { (backend, enabled) ->
+                FilterChip(
+                    selected = currentBackend == backend,
+                    onClick = { if (enabled) onBackendChange(backend) },
+                    enabled = enabled,
+                    label = {
+                        Text(
+                            text = when (backend) {
+                                is InferenceBackend.Auto -> stringResource(R.string.settings_backend_auto)
+                                is InferenceBackend.CPU -> stringResource(R.string.settings_backend_cpu)
+                                is InferenceBackend.Vulkan -> stringResource(R.string.settings_backend_vulkan)
+                                is InferenceBackend.QNN -> stringResource(R.string.settings_backend_qnn)
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = TealPrimary.copy(alpha = 0.2f),
+                        selectedLabelColor = TealPrimary,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = enabled,
+                        selected = currentBackend == backend,
+                        borderColor = MaterialTheme.colorScheme.outline,
+                        selectedBorderColor = TealPrimary,
+                    ),
+                )
+            }
+        }
+
+        if (currentBackend is InferenceBackend.QNN) {
+            Text(
+                text = stringResource(R.string.settings_backend_qnn_phase5_note),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
+// ── Reusable setting composables ──────────────────────────────────────────────
 
 @Composable
 private fun SectionHeader(title: String, modifier: Modifier = Modifier) {
@@ -194,7 +308,7 @@ private fun SectionHeader(title: String, modifier: Modifier = Modifier) {
 private fun IntSliderSetting(
     label: String,
     value: Int,
-    valueLabel: String,
+    formatValue: @Composable (Int) -> String,
     range: IntRange,
     onValueChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -207,7 +321,7 @@ private fun IntSliderSetting(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
-            Text(valueLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(formatValue(sliderValue), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Slider(
             value = sliderValue.toFloat(),
@@ -228,7 +342,7 @@ private fun IntSliderSetting(
 private fun FloatSliderSetting(
     label: String,
     value: Float,
-    valueLabel: String,
+    formatValue: @Composable (Float) -> String,
     range: ClosedFloatingPointRange<Float>,
     steps: Int,
     onValueChange: (Float) -> Unit,
@@ -242,7 +356,7 @@ private fun FloatSliderSetting(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
-            Text(valueLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(formatValue(sliderValue), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Slider(
             value = sliderValue,
@@ -267,8 +381,7 @@ private fun ContextLengthSetting(
     onValueChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val index = contextLengthOptions.indexOfFirst { it >= currentValue }
-        .coerceAtLeast(0)
+    val index = contextLengthOptions.indexOfFirst { it >= currentValue }.coerceAtLeast(0)
     var sliderIndex by rememberSaveable(currentValue) { mutableIntStateOf(index) }
 
     Column(modifier = modifier.fillMaxWidth().padding(vertical = 4.dp)) {

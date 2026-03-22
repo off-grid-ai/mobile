@@ -17,7 +17,7 @@
     "test:e2e:single": "maestro test",
     "test:android": "cd android && ./gradlew :app:testDebugUnitTest",
     "test:ios": "cd ios && xcodebuild test -workspace OffgridMobile.xcworkspace -scheme OffgridMobile -destination 'platform=iOS Simulator,name=iPhone 16e' -only-testing:OffgridMobileTests | (xcpretty 2>/dev/null || cat)",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package && node scripts/patch-llama-vulkan.js"
   },
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.8",

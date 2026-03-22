@@ -27,6 +27,7 @@
     <string name="models_title">Models</string>
     <string name="models_empty_title">No models downloaded</string>
     <string name="models_empty_subtitle">Paste a Hugging Face direct-download URL below and tap Download</string>
+    <string name="models_add_model_title">Add Model</string>
     <string name="models_download_url_hint">Hugging Face download URL</string>
     <string name="models_filename_hint">File name (e.g. model.gguf)</string>
     <string name="models_model_id_hint">Model ID (e.g. Llama-3.2-3B-Q4)</string>
@@ -42,9 +43,34 @@
     <string name="models_dismiss_error">Dismiss</string>
     <string name="models_downloaded_at">Downloaded %1$s</string>
 
+    <!-- Chat screen — S Pen -->
+    <string name="chat_spen_hover_hint">Write with S Pen — tap to send when done</string>
+    <string name="chat_spen_mode_label">S Pen active</string>
+    <string name="chat_spen_input_hint">Write with S Pen…</string>
+
+    <!-- Chat screen — AETHER context indicator -->
+    <string name="chat_aether_active_label">RF · AETHER</string>
+    <string name="chat_aether_sheet_title">RF Environment</string>
+    <string name="chat_aether_sheet_close">Close</string>
+    <string name="chat_aether_no_data">No AETHER data available</string>
+    <string name="chat_aether_captured_at">Captured at %1$s</string>
+    <string name="chat_aether_wifi_header">WiFi (%1$d networks)</string>
+    <string name="chat_aether_bt_header">Bluetooth (%1$d devices)</string>
+    <string name="chat_aether_cellular_header">Cellular</string>
+    <string name="chat_aether_cellular_detail">MCC %1$s · MNC %2$s · %3$d dBm</string>
+    <string name="chat_aether_anomalies_header">Anomalies (%1$d)</string>
+    <string name="chat_aether_signal_dbm">%1$d dBm</string>
+
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
     <string name="settings_inference_section">Inference</string>
+    <string name="settings_inference_backend">Inference Backend</string>
+    <string name="settings_inference_backend_device_supports">Device: %1$s</string>
+    <string name="settings_backend_auto">Auto</string>
+    <string name="settings_backend_cpu">CPU</string>
+    <string name="settings_backend_vulkan">Vulkan</string>
+    <string name="settings_backend_qnn">QNN</string>
+    <string name="settings_backend_qnn_phase5_note">QNN / NPU offload available in Phase 5</string>
     <string name="settings_thread_count">CPU Threads</string>
     <string name="settings_thread_count_value">%1$d threads</string>
     <string name="settings_context_length">Context Length</string>

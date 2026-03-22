@@ -375,7 +375,7 @@ private fun DownloadForm(
                 Icon(Icons.Filled.Download, contentDescription = null, tint = TealPrimary)
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    text = "Add Model",
+                    text = stringResource(R.string.models_add_model_title),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
