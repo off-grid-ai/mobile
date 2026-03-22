@@ -70,16 +70,29 @@ class ModelsViewModel @Inject constructor(
                     is DownloadUiEvent.Progress -> {
                         val entries = _activeDownloads.value.toMutableList()
                         val idx = entries.indexOfFirst { it.downloadId == event.downloadId }
-                        val updated = DownloadEntry(
-                            downloadId = event.downloadId,
-                            modelId = event.modelId,
-                            fileName = event.modelId,
-                            percent = event.percent,
-                            bytesDownloaded = event.bytesDownloaded,
-                            totalBytes = event.totalBytes,
-                            isError = false,
-                            errorMessage = null,
-                        )
+                        val existing = entries.getOrNull(idx)
+                        // Preserve the fileName that was recorded at startDownload time.
+                        // Constructing from event fields alone would show modelId in the card.
+                        val updated = if (existing != null) {
+                            existing.copy(
+                                percent = event.percent,
+                                bytesDownloaded = event.bytesDownloaded,
+                                totalBytes = event.totalBytes,
+                                isError = false,
+                                errorMessage = null,
+                            )
+                        } else {
+                            DownloadEntry(
+                                downloadId = event.downloadId,
+                                modelId = event.modelId,
+                                fileName = event.modelId,
+                                percent = event.percent,
+                                bytesDownloaded = event.bytesDownloaded,
+                                totalBytes = event.totalBytes,
+                                isError = false,
+                                errorMessage = null,
+                            )
+                        }
                         if (idx >= 0) entries[idx] = updated else entries.add(updated)
                         updateDownloads(entries)
                     }
@@ -115,6 +128,23 @@ class ModelsViewModel @Inject constructor(
     fun startDownload(url: String, fileName: String, modelId: String) {
         viewModelScope.launch {
             modelRepository.startDownload(url, fileName, modelId)
+                .onSuccess { downloadId ->
+                    // Register the entry immediately so the fileName is available when
+                    // the first Progress event arrives. Without this, the Progress handler
+                    // would have no existing entry to copy from and would fall back to
+                    // showing modelId in the card's title.
+                    val pending = DownloadEntry(
+                        downloadId = downloadId,
+                        modelId = modelId,
+                        fileName = fileName,
+                        percent = 0,
+                        bytesDownloaded = 0,
+                        totalBytes = 0,
+                        isError = false,
+                        errorMessage = null,
+                    )
+                    updateDownloads(_activeDownloads.value + pending)
+                }
                 .onFailure { err ->
                     val current = _uiState.value
                     if (current is ModelsUiState.Success) {
