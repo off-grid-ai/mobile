@@ -138,7 +138,7 @@ export const ModelCard: React.FC<ModelCardProps> = ({
       disabled={!onPress}
       testID={testID}
     >
-      <View style={styles.cardRow}>
+<View style={styles.cardRow}>
         <View style={styles.cardContent}>
           {compact ? (
             <CompactModelCardContent

@@ -148,7 +148,12 @@ export async function initContextWithFallback(
         logger.error(`[LLM] Attempt 3/3 failed (CPU, ctx=2048): ${finalMsg}`);
         logger.error(`[LLM] All 3 init attempts failed for model: ${modelPath}`);
         logger.error(`[LLM] Error chain — GPU: "${gpuMsg}" | CPU: "${cpuMsg}" | min-ctx: "${finalMsg}"`);
-        throw new Error(`Failed to load model even at minimum context (2048). This may indicate insufficient memory, a corrupted model file, or an unsupported model format. (${finalMsg})`);
+        const errorParts = [
+          gpuMsg && gpuMsg !== finalMsg ? `GPU: ${gpuMsg}` : null,
+          cpuMsg && cpuMsg !== finalMsg ? `CPU: ${cpuMsg}` : null,
+          `min-ctx: ${finalMsg}`,
+        ].filter(Boolean).join(' | ');
+        throw new Error(`Failed to load model even at minimum context (2048). This may indicate insufficient memory, a corrupted model file, or an unsupported model format.\n\nError chain: ${errorParts}`);
       }
     }
   }

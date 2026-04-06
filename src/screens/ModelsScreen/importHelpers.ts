@@ -1,5 +1,7 @@
+import RNFS from 'react-native-fs';
+import { Alert } from 'react-native';
 import { modelManager } from '../../services';
-import { showAlert, hideAlert, AlertState } from '../../components/CustomAlert';
+import { showAlert, AlertState } from '../../components/CustomAlert';
 import { DownloadedModel } from '../../types';
 
 export type GgufFileRef = { uri: string; name: string; size: number };
@@ -43,13 +45,21 @@ export async function importGgufFiles(
   deps: GgufImportDeps,
 ): Promise<void> {
   const { setAlertState, setImportProgress, addDownloadedModel } = deps;
+  console.log('[IMPORT] importGgufFiles called with', files.length, 'file(s)');
 
   if (files.length === 1) {
+    const resolvedFileName = files[0].name ?? 'unknown';
+    console.log('[IMPORT] Single file import. uri:', files[0].uri, '| name:', JSON.stringify(files[0].name), '| resolvedFileName:', resolvedFileName, '| size:', files[0].size);
     const model = await modelManager.importLocalModel({
       sourceUri: files[0].uri,
-      fileName: files[0].name ?? 'unknown',
-      onProgress: p => setImportProgress(p),
+      fileName: resolvedFileName,
+      sourceSize: files[0].size,
+      onProgress: p => {
+        console.log(`[IMPORT] Progress: ${(p.fraction * 100).toFixed(1)}% — ${p.fileName}`);
+        setImportProgress(p);
+      },
     });
+    console.log('[IMPORT] Single file import complete. model.name:', model.name, '| model.id:', model.id);
     addDownloadedModel(model);
     setAlertState(showAlert('Success', `${model.name} imported successfully!`));
     return;
@@ -57,30 +67,70 @@ export async function importGgufFiles(
 
   const file1: GgufFileRef = { uri: files[0].uri, name: files[0].name ?? '', size: files[0].size ?? 0 };
   const file2: GgufFileRef = { uri: files[1].uri, name: files[1].name ?? '', size: files[1].size ?? 0 };
+  console.log('[IMPORT] Two-file (vision) import.');
+  console.log('[IMPORT] file1 — name:', JSON.stringify(file1.name), '| size:', file1.size, '| uri:', file1.uri);
+  console.log('[IMPORT] file2 — name:', JSON.stringify(file2.name), '| size:', file2.size, '| uri:', file2.uri);
+  console.log('[IMPORT] isMmProj(file1.name):', isMmProj(file1.name), '| isMmProj(file2.name):', isMmProj(file2.name));
+
+  // Check if files exist RIGHT AFTER picker returns — before any dialog
+  const file1ExistsBefore = await RNFS.exists(file1.uri.replace('file://', ''));
+  const file2ExistsBefore = await RNFS.exists(file2.uri.replace('file://', ''));
+  console.log('[IMPORT] FILE EXISTS CHECK (before dialog) — file1:', file1ExistsBefore, '| file2:', file2ExistsBefore);
+  console.log('[IMPORT] file1 decoded path:', decodeURIComponent(file1.uri.replace('file://', '')));
+  console.log('[IMPORT] file2 decoded path:', decodeURIComponent(file2.uri.replace('file://', '')));
+
   const { mainFile, mmProjFile } = classifyGgufPair(file1, file2);
+  console.log('[IMPORT] Classification — mainFile:', mainFile.name, '| mmProjFile:', mmProjFile.name);
+
+  const dialogOpenTime = Date.now();
+  console.log('[IMPORT] Showing confirmation dialog at t=0ms');
 
   const confirmed = await new Promise<boolean>(resolve => {
-    setAlertState(
-      showAlert(
-        'Import Vision Model?',
-        `Main model:  ${mainFile.name}\nProjector:    ${mmProjFile.name}\n\nIf these look wrong, cancel and rename your files.`,
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => { setAlertState(hideAlert()); resolve(false); } },
-          { text: 'Import', onPress: () => { setAlertState(hideAlert()); resolve(true); } },
-        ],
-      ),
+    Alert.alert(
+      'Import Vision Model?',
+      `Main model:  ${mainFile.name}\nProjector:    ${mmProjFile.name}\n\nIf these look wrong, cancel and rename your files.`,
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Import', onPress: () => resolve(true) },
+      ],
+      { cancelable: false },
     );
   });
 
-  if (!confirmed) return;
+  const dialogDurationMs = Date.now() - dialogOpenTime;
+  console.log('[IMPORT] Dialog closed after', dialogDurationMs, 'ms. confirmed:', confirmed);
 
+  if (!confirmed) {
+    console.log('[IMPORT] User cancelled vision model import confirmation.');
+    return;
+  }
+
+  // Check if files STILL exist after dialog was dismissed — key check
+  const mainExistsAfter = await RNFS.exists(decodeURIComponent(mainFile.uri.replace('file://', '')));
+  const mmProjExistsAfter = await RNFS.exists(decodeURIComponent(mmProjFile.uri.replace('file://', '')));
+  console.log('[IMPORT] FILE EXISTS CHECK (after dialog, before copy) — mainFile:', mainExistsAfter, '| mmProjFile:', mmProjExistsAfter);
+  console.log('[IMPORT] mainFile path:', decodeURIComponent(mainFile.uri.replace('file://', '')));
+  console.log('[IMPORT] mmProjFile path:', decodeURIComponent(mmProjFile.uri.replace('file://', '')));
+
+  if (!mainExistsAfter || !mmProjExistsAfter) {
+    console.log('[IMPORT] ⚠️ FILES GONE after dialog! iOS deleted temp inbox files during the', dialogDurationMs, 'ms dialog wait.');
+    console.log('[IMPORT] This confirms the temp file eviction bug. Need keepLocalCopy() before dialog.');
+  }
+
+  console.log('[IMPORT] Vision import confirmed. Starting importLocalModel...');
   const model = await modelManager.importLocalModel({
     sourceUri: mainFile.uri,
     fileName: mainFile.name,
-    onProgress: p => setImportProgress(p),
+    sourceSize: mainFile.size,
+    onProgress: p => {
+      console.log(`[IMPORT] Vision progress: ${(p.fraction * 100).toFixed(1)}% — ${p.fileName}`);
+      setImportProgress(p);
+    },
     mmProjSourceUri: mmProjFile.uri,
     mmProjFileName: mmProjFile.name,
+    mmProjSourceSize: mmProjFile.size,
   });
+  console.log('[IMPORT] Vision import complete. model.name:', model.name, '| isVisionModel:', model.isVisionModel, '| mmProjPath:', model.mmProjPath);
   addDownloadedModel(model);
   setAlertState(showAlert('Success', `${model.name} imported with vision projector!`));
 }

@@ -120,44 +120,81 @@ export function useModelsScreen() {
     importImageModelZip(sourceUri, fileName, { addDownloadedImageModel, activeImageModelId, setActiveImageModelId, setImportProgress, setAlertState });
 
   const handleImportLocalModel = async () => {
-    if (isImporting) return;
-    setIsImporting(true);
+    console.log('[IMPORT] handleImportLocalModel called. isImporting =', isImporting);
+    if (isImporting) {
+      console.log('[IMPORT] BLOCKED — isImporting is true, returning early. This is the silent-exit bug.');
+      return;
+    }
     try {
+      console.log('[IMPORT] Opening file picker...');
       const result = await pick({ type: [types.allFiles], allowMultiSelection: true });
-      if (!result || result.length === 0) return;
+      console.log('[IMPORT] Picker returned. File count:', result?.length ?? 0);
+      setIsImporting(true);
+      console.log('[IMPORT] setIsImporting(true) called AFTER picker returns');
+      result?.forEach((f, i) => {
+        console.log(`[IMPORT] File[${i}] name=${JSON.stringify(f.name)} uri=${f.uri} size=${f.size} type=${f.type} nativeType=${f.nativeType} error=${f.error}`);
+      });
 
-      const allGguf = result.every(f => (f.name ?? '').toLowerCase().endsWith('.gguf'));
-      const singleZip = result.length === 1 && (result[0].name ?? '').toLowerCase().endsWith('.zip');
+      if (!result || result.length === 0) {
+        console.log('[IMPORT] Empty result from picker, returning.');
+        return;
+      }
+
+      // Resolve filename: use picker name if available, fall back to last path segment of URI
+      const resolvedFiles = result.map(f => ({
+        ...f,
+        name: f.name?.trim() || decodeURIComponent(f.uri.split('/').pop() ?? '') || 'unknown',
+      }));
+      resolvedFiles.forEach((f, i) => {
+        console.log(`[IMPORT] File[${i}] resolvedName=${JSON.stringify(f.name)} (original=${JSON.stringify(result[i].name)})`);
+      });
+
+      const allGguf = resolvedFiles.every(f => f.name.toLowerCase().endsWith('.gguf'));
+      const singleZip = resolvedFiles.length === 1 && resolvedFiles[0].name.toLowerCase().endsWith('.zip');
+      console.log('[IMPORT] Validation — allGguf:', allGguf, '| singleZip:', singleZip);
+      resolvedFiles.forEach((f, i) => {
+        console.log(`[IMPORT] File[${i}] nameForCheck=${JSON.stringify(f.name)} endsWithGguf=${f.name.toLowerCase().endsWith('.gguf')}`);
+      });
 
       if (!allGguf && !singleZip) {
+        console.log('[IMPORT] VALIDATION FAILED — showing Invalid File alert');
         setAlertState(showAlert(
           'Invalid File',
-          result.length > 1
+          resolvedFiles.length > 1
             ? 'When selecting multiple files, all must be .gguf files (main model + mmproj projector).'
             : 'Supported formats: .gguf (text models) and .zip (image models).',
         ));
         return;
       }
 
-      if (result.length > 2) {
+      if (resolvedFiles.length > 2) {
+        console.log('[IMPORT] Too many files selected:', resolvedFiles.length);
         setAlertState(showAlert('Too Many Files', 'Select 1 file (text/zip) or 2 .gguf files (vision model + mmproj projector).'));
         return;
       }
 
-      const firstUri = result[0].uri;
-      const firstFileName = result[0].name ?? 'unknown';
+      const firstUri = resolvedFiles[0].uri;
+      const firstFileName = resolvedFiles[0].name;
+      console.log('[IMPORT] firstUri:', firstUri, '| firstFileName:', firstFileName);
       setImportProgress({ fraction: 0, fileName: firstFileName });
 
       if (singleZip) {
+        console.log('[IMPORT] Single ZIP detected, routing to handleImportImageModelZip');
         await handleImportImageModelZip(firstUri, firstFileName);
         return;
       }
 
-      await importGgufFiles(result.slice(0, 2), { setAlertState, setImportProgress, addDownloadedModel });
+      console.log('[IMPORT] Routing to importGgufFiles with', resolvedFiles.slice(0, 2).length, 'file(s)');
+      await importGgufFiles(resolvedFiles.slice(0, 2), { setAlertState, setImportProgress, addDownloadedModel });
     } catch (error: unknown) {
-      if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) return;
+      if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) {
+        console.log('[IMPORT] User cancelled the picker.');
+        return;
+      }
+      console.log('[IMPORT] ERROR caught:', getErrorMessage(error), error);
       setAlertState(showAlert('Import Failed', getErrorMessage(error)));
     } finally {
+      console.log('[IMPORT] finally block — resetting isImporting and progress');
       setIsImporting(false);
       setImportProgress(null);
     }

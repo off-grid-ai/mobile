@@ -23,7 +23,6 @@ import { embeddingService } from '../../services/rag/embedding';
 import { useChatStore, useProjectStore, useRemoteServerStore } from '../../stores';
 import { Message, MediaAttachment, Project, DownloadedModel, RemoteModel, ModelLoadingStrategy, CacheType } from '../../types';
 import logger from '../../utils/logger';
-import { shouldUseToolsForMessage } from './toolUsage';
 type SetState<T> = Dispatch<SetStateAction<T>>;
 const FALLBACK_RECENT_MESSAGE_COUNT = 2;
 
@@ -253,10 +252,8 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
   const { enabledTools, rawPrompt } = resolveToolsAndPrompt(deps, conversation);
   const basePrompt = await injectRagContext(conversation?.projectId, messageText, rawPrompt);
-  // Remote models use native tool_choice: 'auto' — skip heuristic gate and always pass enabled tools
   const isRemote = !!useRemoteServerStore.getState().activeRemoteTextModelId;
-  const heuristicMatch = shouldUseToolsForMessage(messageText, enabledTools);
-  const activeTools = (isRemote || heuristicMatch) ? enabledTools : [];
+  const activeTools = enabledTools;
   const systemPrompt = (!isRemote && activeTools.length > 0) ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}` : basePrompt;
   logger.log(`[ChatGen][DEBUG] isRemote=${isRemote}, tools=[${activeTools.join(', ')}], path=${activeTools.length > 0 ? 'withTools' : 'generate'}`);
   const messagesForContext = buildMessagesForContext(targetConversationId, messageText, systemPrompt);
@@ -332,7 +329,7 @@ export async function regenerateResponseFn(deps: GenerationDeps, call: Regenerat
     .map(m => m.id === userMessage.id ? { ...m, content: messageText } : m);
   const { enabledTools, rawPrompt } = resolveToolsAndPrompt(deps, conversation);
   const isRemote = !!useRemoteServerStore.getState().activeRemoteTextModelId;
-  const activeTools = (isRemote || shouldUseToolsForMessage(messageText, enabledTools)) ? enabledTools : [];
+  const activeTools = enabledTools;
   const basePrompt = await injectRagContext(conversation?.projectId, messageText, rawPrompt);
   const systemPrompt = (!isRemote && activeTools.length > 0) ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}` : basePrompt;
   const { prefix, filtered } = applyCompactionPrefix(conversation, systemPrompt, messagesUpToUser);
