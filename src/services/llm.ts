@@ -150,14 +150,22 @@ class LLMService {
   supportsToolCalling(): boolean { return this.toolCallingSupported; }
   supportsThinking(): boolean { return this.thinkingSupported; }
   isThinkingEnabled(): boolean { return this.thinkingSupported && useAppStore.getState().settings.thinkingEnabled; }
+  isGemma4Model(): boolean {
+    const path = this.currentModelPath?.toLowerCase() ?? '';
+    return path.includes('gemma-4') || path.includes('gemma4');
+  }
   /** Disable ctx_shift on Android when GPU layers are active — the OpenCL backend SIGSEGVs on the ggml set op used by KV cache shifting. */
   private shouldDisableCtxShift(): boolean { return Platform.OS === 'android' && this.activeGpuLayers > 0; }
   private detectToolCallingSupport(): void {
     if (!this.context) { this.toolCallingSupported = false; return; }
     try {
       const jinja = (this.context as any)?.model?.chatTemplates?.jinja;
+      logger.log('[LLM][TOOLS] Full jinja caps:', JSON.stringify(jinja));
+      logger.log('[LLM][TOOLS] defaultCaps?.toolCalls:', jinja?.defaultCaps?.toolCalls);
+      logger.log('[LLM][TOOLS] toolUse:', jinja?.toolUse);
+      logger.log('[LLM][TOOLS] toolUseCaps?.toolCalls:', jinja?.toolUseCaps?.toolCalls);
       this.toolCallingSupported = !!(jinja?.defaultCaps?.toolCalls || jinja?.toolUse || jinja?.toolUseCaps?.toolCalls);
-      logger.log('[LLM] Tool calling supported:', this.toolCallingSupported);
+      logger.log('[LLM][TOOLS] toolCallingSupported =', this.toolCallingSupported);
     } catch (e) { logger.warn('[LLM] Error detecting tool calling support:', e); this.toolCallingSupported = false; }
   }
   private detectThinkingSupport(): void {
@@ -196,11 +204,13 @@ class LLMService {
       const startTime = Date.now();
       let firstTokenMs = 0, tokenCount = 0, firstReceived = false;
       let fullContent = '', fullReasoningContent = '', streamedContentSoFar = '', streamedReasoningSoFar = '';
-      const completionParams = { messages: oaiMessages, ...buildCompletionParams(settings, { disableCtxShift: this.shouldDisableCtxShift() }), ...buildThinkingCompletionParams(this.isThinkingEnabled()) };
+      const completionParams = { messages: oaiMessages, ...buildCompletionParams(settings, { disableCtxShift: this.shouldDisableCtxShift() }), ...buildThinkingCompletionParams(this.isThinkingEnabled(), this.isGemma4Model()) };
+      logger.log(`[LLM][THINKING] thinkingSupported=${this.thinkingSupported}, thinkingEnabled=${useAppStore.getState().settings.thinkingEnabled}, isThinkingEnabled=${this.isThinkingEnabled()}, enable_thinking=${(completionParams as any).enable_thinking}, reasoning_format=${(completionParams as any).reasoning_format}`);
       const completionResult = await safeCompletion(ctx, () => ctx.completion(completionParams, (data: any) => {
         if (!this.isGenerating || !data.token) return;
-        if (!firstReceived) { firstReceived = true; firstTokenMs = Date.now() - startTime; }
+        if (!firstReceived) { firstReceived = true; firstTokenMs = Date.now() - startTime; logger.log(`[LLM][THINKING] First token raw data — token: ${JSON.stringify(data.token)}, content: ${JSON.stringify(data.content)}, reasoning_content: ${JSON.stringify(data.reasoning_content)}`); }
         tokenCount++;
+        if (data.reasoning_content) logger.log(`[LLM][THINKING] reasoning_content chunk received: ${JSON.stringify(data.reasoning_content)}`);
         const content = getStreamingDelta(data.content ?? (!data.reasoning_content ? data.token : undefined), streamedContentSoFar);
         const reasoningContent = getStreamingDelta(data.reasoning_content || undefined, streamedReasoningSoFar);
         if (data.content) streamedContentSoFar = data.content;
@@ -214,6 +224,7 @@ class LLMService {
       this.performanceStats = recordGenerationStats(startTime, firstTokenMs, tokenCount);
       if (completionResult?.context_full) { logger.log('[LLM] Context full detected — signalling for compaction'); throw new Error('Context is full'); }
       const result = { content: cr?.content || cr?.text || fullContent, reasoningContent: cr?.reasoning_content || fullReasoningContent };
+      logger.log(`[LLM][THINKING] Final result — hasContent=${!!result.content}, hasReasoningContent=${!!result.reasoningContent}, reasoningLength=${result.reasoningContent?.length ?? 0}, fullReasoningFromStream=${fullReasoningContent.length}`);
       onComplete?.(result);
       return result.content;
     })();
@@ -224,6 +235,7 @@ class LLMService {
     const work = generateWithToolsImpl({
       context: this.context, isGenerating: this.isGenerating,
       isThinkingEnabled: this.isThinkingEnabled(),
+      isGemma4Model: this.isGemma4Model(),
       disableCtxShift: this.shouldDisableCtxShift(),
       manageContextWindow: (msgs, extra?) => this.manageContextWindow(msgs, extra),
       convertToOAIMessages: (msgs) => this.convertToOAIMessages(msgs),

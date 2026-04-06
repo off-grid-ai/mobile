@@ -196,53 +196,96 @@ export interface ImportLocalModelOpts {
   sourceUri: string;
   fileName: string;
   modelsDir: string;
+  sourceSize?: number | null;
   onProgress?: (progress: { fraction: number; fileName: string }) => void;
   mmProjSourceUri?: string;
   mmProjFileName?: string;
+  mmProjSourceSize?: number | null;
 }
 
-async function resolveAndroidUri(uri: string, cacheFileName: string): Promise<{ resolved: string; tempPath: string | null }> {
-  if (Platform.OS !== 'android' || !uri.startsWith('content://')) {
-    return { resolved: uri, tempPath: null };
+function resolveUri(uri: string): string {
+  // Android content:// URIs are passed directly to RNFS.copyFile — no cache copy needed.
+  // iOS file:// URIs need decoding (%20 → space) so RNFS can find the file on disk.
+  if (uri.startsWith('content://')) {
+    console.log('[IMPORT][scan] resolveUri — Android content:// URI, using as-is');
+    console.log('[IMPORT][scan] uri:', uri);
+    return uri;
   }
-  const tempPath = `${RNFS.CachesDirectoryPath}/${Date.now()}_${cacheFileName}`;
-  await RNFS.copyFile(uri, tempPath);
-  return { resolved: tempPath, tempPath };
+  const decoded = decodeURIComponent(uri);
+  console.log('[IMPORT][scan] resolveUri — file URI, decoded');
+  console.log('[IMPORT][scan] original:', uri);
+  console.log('[IMPORT][scan] decoded: ', decoded);
+  return decoded;
 }
 
 
 export async function importLocalModel(opts: ImportLocalModelOpts): Promise<DownloadedModel> { // NOSONAR
-  const { sourceUri, fileName, modelsDir, onProgress, mmProjSourceUri, mmProjFileName } = opts;
+  const { sourceUri, fileName, modelsDir, sourceSize, onProgress, mmProjSourceUri, mmProjFileName, mmProjSourceSize } = opts;
+  const importStart = Date.now();
+  const elapsed = () => `+${Date.now() - importStart}ms`;
+
+  console.log('[IMPORT][scan] ── importLocalModel START ──────────────────');
+  console.log('[IMPORT][scan] Platform.OS:', Platform.OS);
+  console.log('[IMPORT][scan] fileName:', fileName);
+  console.log('[IMPORT][scan] sourceUri:', sourceUri);
+  console.log('[IMPORT][scan] sourceSize:', sourceSize ?? 'unknown');
+  console.log('[IMPORT][scan] mmProjFileName:', mmProjFileName ?? 'none');
+  console.log('[IMPORT][scan] mmProjSourceUri:', mmProjSourceUri ?? 'none');
+  console.log('[IMPORT][scan] mmProjSourceSize:', mmProjSourceSize ?? 'unknown');
+  console.log('[IMPORT][scan] modelsDir:', modelsDir);
+
+  // Heartbeat — logs every 3s so we can see exactly where it gets stuck
+  let heartbeatStep = 'init';
+  const heartbeat = setInterval(() => {
+    console.log(`[IMPORT][scan] ⏱ HEARTBEAT — still running at ${elapsed()}, current step: ${heartbeatStep}`);
+  }, 3000);
 
   if (!fileName.toLowerCase().endsWith('.gguf')) {
+    clearInterval(heartbeat);
+    console.log('[IMPORT][scan] ERROR — fileName does not end with .gguf:', fileName);
     throw new Error('Only .gguf files can be imported');
   }
 
-  const { resolved: resolvedSource, tempPath: tempCachePath } = await resolveAndroidUri(sourceUri, fileName);
-  const { resolved: resolvedMmProjSource, tempPath: tempMmProjCachePath } = mmProjSourceUri && mmProjFileName
-    ? await resolveAndroidUri(mmProjSourceUri, mmProjFileName)
-    : { resolved: mmProjSourceUri, tempPath: null };
+  heartbeatStep = 'resolving URIs';
+  const resolvedSource = resolveUri(sourceUri);
+  const resolvedMmProjSource = mmProjSourceUri ? resolveUri(mmProjSourceUri) : undefined;
+  console.log(`[IMPORT][scan] ${elapsed()} resolvedSource:`, resolvedSource);
+  if (mmProjFileName) {
+    console.log(`[IMPORT][scan] ${elapsed()} resolvedMmProjSource:`, resolvedMmProjSource ?? 'none');
+  }
 
   try {
+    heartbeatStep = 'checking dest paths';
     const destPath = `${modelsDir}/${fileName}`;
-    if (await RNFS.exists(destPath)) throw new Error(`A model file named "${fileName}" already exists`);
+    console.log(`[IMPORT][scan] ${elapsed()} destPath:`, destPath);
+    const destExists = await RNFS.exists(destPath);
+    console.log(`[IMPORT][scan] ${elapsed()} dest already exists:`, destExists);
+    if (destExists) throw new Error(`A model file named "${fileName}" already exists`);
     if (mmProjFileName && await RNFS.exists(`${modelsDir}/${mmProjFileName}`)) {
       throw new Error(`A file named "${mmProjFileName}" already exists`);
     }
 
     // Copy main model: progress 0→0.5 when mmproj present, 0→1 otherwise
     const mainProgressScale = mmProjFileName ? 0.5 : 1;
+    heartbeatStep = 'copying main model';
+    console.log(`[IMPORT][scan] ${elapsed()} Starting main model copy. sourceSize: ${sourceSize ?? 'unknown'} mainProgressScale: ${mainProgressScale}`);
+    console.log(`[IMPORT][scan] ${elapsed()} copy FROM:`, resolvedSource);
+    console.log(`[IMPORT][scan] ${elapsed()} copy TO:  `, destPath);
+    const mainCopyStart = Date.now();
     await copyFileWithProgress(
       resolvedSource,
       destPath,
+      sourceSize ?? null,
       onProgress ? (fraction) => onProgress({ fraction: fraction * mainProgressScale, fileName }) : undefined,
     );
+    console.log(`[IMPORT][scan] ${elapsed()} Main model copy complete in ${Date.now() - mainCopyStart}ms`);
 
     const quantMatch = fileName.match(/[_-](Q\d+[_\w]*|f16|f32)/i);
     const quantization = quantMatch ? quantMatch[1].toUpperCase() : 'Unknown';
     const modelName = fileName.replace(/\.gguf$/i, '').replace(/[_-]Q\d+.*/i, '');
     const destStat = await RNFS.stat(destPath);
     const fileSize = parseSizeInt(destStat.size);
+    console.log('[IMPORT][scan] modelName:', modelName, '| quantization:', quantization, '| fileSize:', fileSize, 'bytes');
 
     const pseudoFile: ModelFile = { name: fileName, size: fileSize, quantization, downloadUrl: '' };
     const model = await buildDownloadedModel({ modelId: 'local_import', file: pseudoFile, resolvedLocalPath: destPath });
@@ -257,36 +300,61 @@ export async function importLocalModel(opts: ImportLocalModelOpts): Promise<Down
     // Copy mmproj and link it to the model: progress 0.5→1
     if (mmProjFileName && resolvedMmProjSource) {
       const mmProjDestPath = `${modelsDir}/${mmProjFileName}`;
+      heartbeatStep = 'copying mmproj';
+      console.log(`[IMPORT][scan] ${elapsed()} Starting mmproj copy. mmProjSourceSize: ${mmProjSourceSize ?? 'unknown'}`);
+      console.log(`[IMPORT][scan] ${elapsed()} copy FROM:`, resolvedMmProjSource);
+      console.log(`[IMPORT][scan] ${elapsed()} copy TO:  `, mmProjDestPath);
+      const mmProjCopyStart = Date.now();
       await copyFileWithProgress(
         resolvedMmProjSource,
         mmProjDestPath,
+        mmProjSourceSize ?? null,
         onProgress
           ? (fraction) => onProgress({ fraction: 0.5 + fraction * 0.5, fileName: mmProjFileName })
           : undefined,
       );
+      console.log(`[IMPORT][scan] ${elapsed()} mmproj copy complete in ${Date.now() - mmProjCopyStart}ms`);
       const mmProjStat = await RNFS.stat(mmProjDestPath);
       builtModel.mmProjPath = mmProjDestPath;
       builtModel.mmProjFileName = mmProjFileName;
       builtModel.mmProjFileSize = parseSizeInt(mmProjStat.size);
       builtModel.isVisionModel = true;
+      console.log(`[IMPORT][scan] ${elapsed()} mmproj linked. mmProjFileSize:`, builtModel.mmProjFileSize, 'bytes');
     }
 
+    heartbeatStep = 'persisting metadata';
+    console.log(`[IMPORT][scan] ${elapsed()} Persisting model metadata...`);
     await persistDownloadedModel(builtModel, modelsDir);
+    console.log(`[IMPORT][scan] ${elapsed()} ── importLocalModel COMPLETE. id: ${builtModel.id} ──`);
     return builtModel;
+  } catch (e) {
+    console.log(`[IMPORT][scan] ${elapsed()} ❌ importLocalModel ERROR:`, e);
+    throw e;
   } finally {
-    if (tempCachePath) await RNFS.unlink(tempCachePath).catch(() => {});
-    if (tempMmProjCachePath) await RNFS.unlink(tempMmProjCachePath).catch(() => {});
+    clearInterval(heartbeat);
   }
 }
 
 async function copyFileWithProgress(
   source: string,
   dest: string,
+  knownTotalBytes: number | null,
   onProgress?: (fraction: number) => void,
 ): Promise<void> {
-  const sourceStat = await RNFS.stat(source);
-  const totalBytes = parseSizeInt(sourceStat.size);
+  const copyStart = Date.now();
+  const copyElapsed = () => `+${Date.now() - copyStart}ms`;
+  const totalBytes = knownTotalBytes ?? 0;
+  const totalMB = totalBytes > 0 ? (totalBytes / 1024 / 1024).toFixed(1) : '?';
+
+  console.log(`[IMPORT][scan] copyFileWithProgress START — knownTotalBytes: ${knownTotalBytes ?? 'unknown'} (${totalMB} MB)`);
+  console.log('[IMPORT][scan] FROM:', source);
+  console.log('[IMPORT][scan] TO:  ', dest);
+  if (!knownTotalBytes) {
+    console.log('[IMPORT][scan] No known size — progress will be indeterminate');
+  }
+
   let polling = true;
+  let lastWritten = 0;
 
   const pollInterval = setInterval(async () => {
     if (!polling) return;
@@ -295,21 +363,37 @@ async function copyFileWithProgress(
       if (exists) {
         const stat = await RNFS.stat(dest);
         const written = parseSizeInt(stat.size);
-        onProgress?.(totalBytes > 0 ? Math.min(written / totalBytes, 0.99) : 0);
+        const writtenMB = (written / 1024 / 1024).toFixed(1);
+        const delta = written - lastWritten;
+        const speedMBs = ((delta / 1024 / 1024) / 0.5).toFixed(1);
+        lastWritten = written;
+        if (totalBytes > 0) {
+          const pct = Math.min(written / totalBytes, 0.99);
+          console.log(`[IMPORT][scan] ${copyElapsed()} copy poll — ${writtenMB}/${totalMB} MB (${(pct * 100).toFixed(1)}%) speed: ${speedMBs} MB/s`);
+          onProgress?.(pct);
+        } else {
+          console.log(`[IMPORT][scan] ${copyElapsed()} copy poll — ${writtenMB} MB written (size unknown) speed: ${speedMBs} MB/s`);
+          // No fraction available — don't call onProgress so UI stays indeterminate
+        }
+      } else {
+        console.log(`[IMPORT][scan] ${copyElapsed()} copy poll — dest not created yet`);
       }
-    } catch {
-      // File may not exist yet, ignore
+    } catch (e) {
+      console.log(`[IMPORT][scan] ${copyElapsed()} copy poll error:`, e);
     }
   }, 500);
 
   try {
+    console.log(`[IMPORT][scan] ${copyElapsed()} calling RNFS.copyFile...`);
     await RNFS.copyFile(source, dest);
     polling = false;
     clearInterval(pollInterval);
+    console.log(`[IMPORT][scan] ${copyElapsed()} RNFS.copyFile resolved — 100% done`);
     onProgress?.(1);
   } catch (error) {
     polling = false;
     clearInterval(pollInterval);
+    console.log(`[IMPORT][scan] ${copyElapsed()} RNFS.copyFile FAILED:`, error);
     await RNFS.unlink(dest).catch(() => {});
     throw error;
   }
