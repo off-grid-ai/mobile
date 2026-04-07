@@ -1,4 +1,5 @@
 import React from 'react';
+import { View, StyleSheet } from 'react-native';
 import { ChatMessage } from '../../components';
 import { AudioMessageBubble } from '../../components/AudioMessageBubble';
 import { TTSButton } from '../../components/TTSButton';
@@ -70,14 +71,16 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
     const audioAtt = msg.attachments?.find((a) => a.type === 'audio');
     if (audioAtt) {
       const bubble = (
-        <AudioMessageBubble
-          messageId={msg.id}
-          audioPath={audioAtt.uri}
-          waveformData={[]}
-          durationSeconds={audioAtt.audioDurationSeconds ?? 0}
-          transcript={msg.content}
-          isUser
-        />
+        <View style={audioStyles.userContainer}>
+          <AudioMessageBubble
+            messageId={msg.id}
+            audioPath={audioAtt.uri}
+            waveformData={[]}
+            durationSeconds={audioAtt.audioDurationSeconds ?? 0}
+            transcript={msg.content}
+            isUser
+          />
+        </View>
       );
       return animateEntry ? <AnimatedEntry index={0}>{bubble}</AnimatedEntry> : bubble;
     }
@@ -87,7 +90,11 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
   // (historical messages without audio fall through to normal ChatMessage)
   if (msg.role === 'assistant' && ttsMode === 'audio' && !msg.isSystemInfo && !msg.toolCalls?.length
     && (msg.audioPath || msg.isGeneratingAudio)) {
-    const bubble = <AudioMessageBubble {...buildAudioBubbleProps(msg)} />;
+    const bubble = (
+      <View style={audioStyles.assistantContainer}>
+        <AudioMessageBubble {...buildAudioBubbleProps(msg)} />
+      </View>
+    );
     return animateEntry ? <AnimatedEntry index={0}>{bubble}</AnimatedEntry> : bubble;
   }
 
@@ -113,3 +120,17 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
     />
   );
 };
+
+// Matches the horizontal padding of ChatMessage so audio bubbles align with text bubbles
+const audioStyles = StyleSheet.create({
+  userContainer: {
+    paddingHorizontal: 16,
+    marginVertical: 8,
+    alignItems: 'flex-end',
+  },
+  assistantContainer: {
+    paddingHorizontal: 16,
+    marginVertical: 8,
+    alignItems: 'flex-start',
+  },
+});

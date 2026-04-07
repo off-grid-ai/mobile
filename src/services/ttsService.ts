@@ -264,9 +264,27 @@ class TTSService {
   }
 
   async playFromFile(filePath: string, speed = 1.0, startOffset = 0): Promise<void> {
-    const base64 = await RNFS.readFile(filePath, 'base64');
-    const samples = this.base64ToFloat32(base64);
-    return this.playFromSamples(samples, speed, startOffset);
+    // WAV/PCM files must be decoded with decodeAudioData — NOT cast from raw bytes.
+    // The old base64→Float32 path was designed for OuteTTS raw Float32 output only.
+    this.audioCtx?.close().catch(() => {});
+    this.audioCtx = new AudioContext();
+    const src = filePath.startsWith('file://') ? filePath : `file://${filePath}`;
+    // decodeAudioData accepts a string path as DecodeDataInput
+    const buffer = await this.audioCtx.decodeAudioData(src as unknown as ArrayBuffer);
+    const source = this.audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = speed;
+    source.connect(this.audioCtx.destination);
+    this.currentSource = source;
+    this.isSpeakingFlag = true;
+    return new Promise((resolve) => {
+      source.onEnded = () => {
+        this.currentSource = null;
+        this.isSpeakingFlag = false;
+        resolve();
+      };
+      source.start(0, startOffset);
+    });
   }
 
   /** Chat Mode: generate + play + discard. No disk write.
