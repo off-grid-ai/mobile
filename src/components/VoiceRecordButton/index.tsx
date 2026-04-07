@@ -16,14 +16,15 @@ import ReanimatedAnimated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useThemedStyles } from '../../theme';
 import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../CustomAlert';
 import { createStyles } from './styles';
 import { LoadingState, TranscribingState, UnavailableButton, ButtonIcon } from './states';
-import { RootStackParamList } from '../../navigation/types';
+import { useWhisperStore } from '../../stores';
 import logger from '../../utils/logger';
+
+const DOWNLOAD_MODEL_ID = 'small.en';
+const DOWNLOAD_MODEL_SIZE_MB = 466;
 
 interface VoiceRecordButtonProps {
   isRecording: boolean;
@@ -95,7 +96,7 @@ export const VoiceRecordButton: React.FC<VoiceRecordButtonProps> = ({
   isModelLoading,
   isTranscribing,
   partialResult,
-  error,
+  error: _error,
   disabled,
   onStartRecording,
   onStopRecording,
@@ -103,7 +104,7 @@ export const VoiceRecordButton: React.FC<VoiceRecordButtonProps> = ({
   asSendButton = false,
 }) => {
   const styles = useThemedStyles(createStyles);
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { downloadModel, isDownloading, downloadProgress } = useWhisperStore();
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const loadingAnim = useRef(new Animated.Value(0)).current;
@@ -125,6 +126,7 @@ export const VoiceRecordButton: React.FC<VoiceRecordButtonProps> = ({
       rippleOpacity.value = 0;
     }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRecording]);
 
   const rippleStyle = useAnimatedStyle(() => ({
@@ -161,15 +163,20 @@ export const VoiceRecordButton: React.FC<VoiceRecordButtonProps> = ({
   const panResponder = useRef(buildPanResponder({ isDraggingToCancel, cancelOffsetX, callbacksRef })).current;
 
   const handleUnavailableTap = () => {
-    const errorDetail = error || 'No transcription model downloaded';
+    if (isDownloading) { return; }
     setAlertState(showAlert(
-      'Voice Input Unavailable',
-      `${errorDetail}\n\nDownload a Whisper model to enable on-device voice input.`,
+      'Download Voice Model',
+      `Download Whisper Small to enable voice input? (${DOWNLOAD_MODEL_SIZE_MB} MB)`,
       [
-        { text: 'Cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Go to Voice Settings',
-          onPress: () => navigation.navigate('VoiceSettings'),
+          text: 'Download',
+          onPress: () => {
+            setAlertState(hideAlert());
+            downloadModel(DOWNLOAD_MODEL_ID).catch((err) => {
+              logger.error('[VoiceRecordButton] Download failed:', err);
+            });
+          },
         },
       ],
     ));
@@ -206,8 +213,8 @@ export const VoiceRecordButton: React.FC<VoiceRecordButtonProps> = ({
   if (!isAvailable) {
     return (
       <View style={styles.container}>
-        <TouchableOpacity style={styles.buttonWrapper} onPress={handleUnavailableTap}>
-          <UnavailableButton asSendButton={asSendButton} />
+        <TouchableOpacity style={styles.buttonWrapper} onPress={handleUnavailableTap} disabled={isDownloading}>
+          <UnavailableButton asSendButton={asSendButton} downloadProgress={isDownloading ? downloadProgress : undefined} />
         </TouchableOpacity>
         {alert}
       </View>
