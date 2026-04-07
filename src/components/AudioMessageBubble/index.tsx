@@ -23,6 +23,8 @@ interface AudioMessageBubbleProps {
   /** Optional plain-text transcript to show when user expands */
   transcript?: string;
   isGenerating?: boolean;
+  /** True for user-sent voice recordings (right-aligned) */
+  isUser?: boolean;
 }
 
 function formatDuration(seconds: number): string {
@@ -95,6 +97,7 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
   durationSeconds,
   transcript,
   isGenerating,
+  isUser = false,
 }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -123,7 +126,7 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
 
   if (isGenerating) {
     return (
-      <View style={styles.bubble} testID={`audio-bubble-generating-${messageId}`}>
+      <View style={[styles.bubble, isUser && styles.bubbleUser]} testID={`audio-bubble-generating-${messageId}`}>
         <ActivityIndicator size="small" color={colors.primary} />
         <Text style={styles.generatingText}>Generating audio...</Text>
       </View>
@@ -131,7 +134,7 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
   }
 
   return (
-    <View style={styles.bubble} testID={`audio-bubble-${messageId}`}>
+    <View style={[styles.bubble, isUser && styles.bubbleUser]} testID={`audio-bubble-${messageId}`}>
       {/* Playback row */}
       <View style={styles.playRow}>
         <TouchableOpacity
@@ -193,6 +196,11 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     maxWidth: '80%' as const,
     alignSelf: 'flex-start' as const,
     gap: SPACING.sm,
+  },
+  bubbleUser: {
+    alignSelf: 'flex-end' as const,
+    backgroundColor: `${colors.primary}18`,
+    borderColor: `${colors.primary}40`,
   },
   generatingText: {
     ...TYPOGRAPHY.meta,

@@ -65,7 +65,25 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
   const animateEntry = animateLastN > 0 && index >= displayMessagesLength - animateLastN;
   const isStreamingThis = item.id === 'streaming';
 
-  // Audio Mode: render waveform bubble only when audio is ready or being generated
+  // Audio Mode: user voice message (audio attachment on user msg)
+  if (msg.role === 'user' && ttsMode === 'audio') {
+    const audioAtt = msg.attachments?.find((a) => a.type === 'audio');
+    if (audioAtt) {
+      const bubble = (
+        <AudioMessageBubble
+          messageId={msg.id}
+          audioPath={audioAtt.uri}
+          waveformData={[]}
+          durationSeconds={audioAtt.audioDurationSeconds ?? 0}
+          transcript={msg.content}
+          isUser
+        />
+      );
+      return animateEntry ? <AnimatedEntry index={0}>{bubble}</AnimatedEntry> : bubble;
+    }
+  }
+
+  // Audio Mode: assistant voice note (audio is ready or being generated)
   // (historical messages without audio fall through to normal ChatMessage)
   if (msg.role === 'assistant' && ttsMode === 'audio' && !msg.isSystemInfo && !msg.toolCalls?.length
     && (msg.audioPath || msg.isGeneratingAudio)) {

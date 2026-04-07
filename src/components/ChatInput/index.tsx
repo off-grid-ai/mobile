@@ -13,6 +13,7 @@ import { AttachmentPreview, useAttachments } from './Attachments';
 import { useVoiceInput } from './Voice';
 import { QuickSettingsPopover, AttachPickerPopover } from './Popovers';
 import { useKeyboardAwarePopover } from './useKeyboardAwarePopover';
+import { useTTSStore } from '../../stores/ttsStore';
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: MediaAttachment[], imageMode?: ImageModeState) => void;
@@ -70,6 +71,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const quickSettings = useKeyboardAwarePopover();
   const attachPicker = useKeyboardAwarePopover();
   const inputRef = useRef<TextInput>(null);
+  const attachmentsRef = useRef<MediaAttachment[]>([]);
   const hasText = message.length > 0;
   const iconsAnim = useRef(new Animated.Value(0)).current;
 
@@ -81,9 +83,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }).start();
   }, [hasText, iconsAnim]);
 
-  const { attachments, removeAttachment, clearAttachments, handlePickImage, handlePickDocument } = useAttachments(setAlertState);
+  const { attachments, removeAttachment, clearAttachments, handlePickImage, handlePickDocument, addAudioAttachment } = useAttachments(setAlertState);
+  attachmentsRef.current = attachments;
+  const ttsInterfaceMode = useTTSStore((s) => s.settings.interfaceMode);
+  const isAudioMode = ttsInterfaceMode === 'audio';
 
-  const { isRecording, isModelLoading, isTranscribing, partialResult, error, voiceAvailable, startRecording, stopRecording, clearResult } = useVoiceInput({
+  const { isRecording, isModelLoading, isTranscribing, partialResult, error, voiceAvailable, startRecording, stopRecording, cancelRecording } = useVoiceInput({
     conversationId,
     onTranscript: (text) => {
       setMessage(prev => {
@@ -91,6 +96,24 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         return prefix + text;
       });
     },
+    onAudioAttachment: (uri, format, durationSeconds) => {
+      addAudioAttachment(uri, format, durationSeconds);
+    },
+    onAutoSend: isAudioMode ? (text, audio) => {
+      // Build audio attachment inline (avoids async state-update race)
+      const audioAttachment: MediaAttachment = {
+        id: `audio-${Date.now()}`,
+        type: 'audio',
+        uri: audio.uri,
+        audioFormat: audio.format,
+        audioDurationSeconds: audio.durationSeconds,
+        fileName: audio.uri.split('/').pop(),
+      };
+      triggerHaptic('impactMedium');
+      const all = [...attachmentsRef.current, audioAttachment];
+      onSend(text, all, imageMode);
+      clearAttachments();
+    } : undefined,
   });
 
   const canSend = (message.trim().length > 0 || attachments.length > 0) && !disabled;
@@ -168,7 +191,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       disabled={disabled}
       onStartRecording={startRecording}
       onStopRecording={stopRecording}
-      onCancelRecording={() => { stopRecording(); clearResult(); }}
+      onCancelRecording={cancelRecording}
       asSendButton
     />
   );
