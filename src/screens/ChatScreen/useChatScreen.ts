@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { AlertState, initialAlertState } from '../../components';
-import { useAppStore, useChatStore, useProjectStore, useRemoteServerStore } from '../../stores';
+import { useAppStore, useChatStore, useProjectStore, useRemoteServerStore, useTTSStore } from '../../stores';
+import '../../types/tts';
 import logger from '../../utils/logger';
 import {
   llmService, generationService, imageGenerationService, activeModelService,
@@ -18,6 +19,20 @@ import { saveImageToGallery } from './useSaveImage';
 
 export type { AlertState, ChatMessageItem, StreamingState };
 export { getDisplayMessages, getPlaceholderText };
+
+function triggerAudioModeGeneration(conversationId: string, messageId: string, content: string) {
+  const updateAudio = useChatStore.getState().updateMessageAudio;
+  updateAudio(conversationId, messageId, { isGeneratingAudio: true });
+  useTTSStore.getState().generateAndSave(content, conversationId, messageId)
+    .then(({ path, waveformData, durationSeconds }) => {
+      useChatStore.getState().updateMessageAudio(conversationId, messageId, {
+        audioPath: path, waveformData, audioDurationSeconds: durationSeconds, isGeneratingAudio: false,
+      });
+    })
+    .catch(() => {
+      useChatStore.getState().updateMessageAudio(conversationId, messageId, { isGeneratingAudio: false });
+    });
+}
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 
@@ -192,6 +207,17 @@ export const useChatScreen = () => {
     lastMessageCountRef.current = curr;
   }, [displayMessages.length]);
   useEffect(() => { lastMessageCountRef.current = 0; setAnimateLastN(0); }, [activeConversationId]);
+  const prevStreamingRef = useRef(false);
+  useEffect(() => {
+    const was = prevStreamingRef.current;
+    prevStreamingRef.current = isStreamingForThisConversation;
+    if (!was || isStreamingForThisConversation || !activeConversationId) return;
+    const tts = useTTSStore.getState();
+    if (tts.settings.interfaceMode !== 'audio' || !tts.isModelLoaded) return;
+    const last = (activeConversation?.messages ?? []).at(-1);
+    if (!last || last.role !== 'assistant' || last.isSystemInfo || last.toolCalls?.length || last.audioPath) return;
+    triggerAudioModeGeneration(activeConversationId, last.id, last.content);
+  }, [isStreamingForThisConversation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startGeneration = async (targetConversationId: string, messageText: string) => {
     await startGenerationFn(genDeps, { setDebugInfo, targetConversationId, messageText });

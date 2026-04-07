@@ -5,7 +5,6 @@ import { Message, Conversation, GenerationMeta } from '../types';
 import { stripControlTokens } from '../utils/messageContent';
 import { generateId } from '../utils/generateId';
 import '../types/tts';
-import { useTTSStore } from './ttsStore';
 
 function nextUpdatedAt(previousUpdatedAt?: string): string {
   const now = Date.now();
@@ -63,6 +62,7 @@ interface ChatState {
   addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => Message;
   updateMessageContent: (conversationId: string, messageId: string, content: string) => void;
   updateMessageThinking: (conversationId: string, messageId: string, isThinking: boolean) => void;
+  updateMessageAudio: (conversationId: string, messageId: string, audio: { audioPath?: string; waveformData?: number[]; audioDurationSeconds?: number; isGeneratingAudio?: boolean }) => void;
   deleteMessage: (conversationId: string, messageId: string) => void;
   deleteMessagesAfter: (conversationId: string, messageId: string) => void;
 
@@ -201,6 +201,10 @@ export const useChatStore = create<ChatState>()(
         }));
       },
 
+      updateMessageAudio: (conversationId, messageId, audio) => {
+        set((state) => ({ conversations: mapConversation(state.conversations, conversationId, (conv) => updateMessageInConv(conv, messageId, (msg) => ({ ...msg, ...audio }))) }));
+      },
+
       deleteMessage: (conversationId, messageId) => {
         set((state) => ({
           conversations: mapConversation(state.conversations, conversationId, (conv) => ({
@@ -269,18 +273,13 @@ export const useChatStore = create<ChatState>()(
         const sanitizedMessage = stripControlTokens(streamingMessage).trim();
         const reasoningContent = streamingReasoningContent.trim() || undefined;
         if (streamingForConversationId === conversationId && (sanitizedMessage || reasoningContent)) {
-          const savedMsg = addMessage(conversationId, {
+          addMessage(conversationId, {
             role: 'assistant',
             content: sanitizedMessage,
             reasoningContent,
             generationTimeMs,
             generationMeta,
           });
-          // Audio Mode: kick off TTS generation in the background
-          const tts = useTTSStore.getState();
-          if (tts.settings.interfaceMode === 'audio' && tts.isModelLoaded) {
-            tts.generateAndSave(sanitizedMessage, conversationId, savedMsg.id);
-          }
         }
         set({
           streamingMessage: '',

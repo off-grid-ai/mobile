@@ -12,6 +12,8 @@ export interface ChatMessageProps {
   canGenerateImage?: boolean;
   showGenerationDetails?: boolean;
   animateEntry?: boolean;
+  /** Extra element rendered at the end of the meta row (e.g. TTSButton) */
+  metaExtra?: React.ReactNode;
 }
 
 export interface ParsedContent {

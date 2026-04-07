@@ -133,14 +133,16 @@ type MetaRowProps = {
   isStreaming?: boolean;
   showActions: boolean;
   onMenuOpen: () => void;
+  metaExtra?: React.ReactNode;
 };
 
-const MessageMetaRow: React.FC<MetaRowProps> = ({ message, styles, isStreaming, showActions, onMenuOpen }) => (
+const MessageMetaRow: React.FC<MetaRowProps> = ({ message, styles, isStreaming, showActions, onMenuOpen, metaExtra }) => (
   <View style={styles.metaRow}>
     <Text style={styles.timestamp}>{formatTime(message.timestamp)}</Text>
     {message.generationTimeMs != null && message.role === 'assistant' && (
       <Text style={styles.generationTime}>{formatDuration(message.generationTimeMs)}</Text>
     )}
+    {metaExtra}
     {showActions && !isStreaming && (
       <TouchableOpacity style={styles.actionHint} onPress={onMenuOpen}>
         <Text style={styles.actionHintText}>•••</Text>
@@ -181,6 +183,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   canGenerateImage = false,
   showGenerationDetails = false,
   animateEntry = false,
+  metaExtra,
 }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -291,6 +294,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         isStreaming={isStreaming}
         showActions={showActions}
         onMenuOpen={() => setShowActionMenu(true)}
+        metaExtra={metaExtra}
       />
 
       {showGenerationDetails && !isUser && message.generationMeta && (

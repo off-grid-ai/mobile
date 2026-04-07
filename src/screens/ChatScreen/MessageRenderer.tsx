@@ -34,14 +34,14 @@ type AudioBubbleProps = {
   isGenerating: boolean;
 };
 
-function buildAudioBubbleProps(msg: Message, isStreamingThis: boolean): AudioBubbleProps {
+function buildAudioBubbleProps(msg: Message): AudioBubbleProps {
   return {
     messageId: msg.id,
     audioPath: msg.audioPath ?? '',
     waveformData: msg.waveformData ?? [],
     durationSeconds: msg.audioDurationSeconds ?? 0,
     transcript: stripControlTokens(msg.content),
-    isGenerating: Boolean(msg.isGeneratingAudio) || (!msg.audioPath && !isStreamingThis),
+    isGenerating: Boolean(msg.isGeneratingAudio),
   };
 }
 
@@ -67,11 +67,17 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
 
   // Audio Mode: plain assistant messages render as waveform bubbles
   if (msg.role === 'assistant' && ttsMode === 'audio' && !msg.isSystemInfo && !msg.toolCalls?.length) {
-    const bubble = <AudioMessageBubble {...buildAudioBubbleProps(msg, isStreamingThis)} />;
+    const bubble = <AudioMessageBubble {...buildAudioBubbleProps(msg)} />;
     return animateEntry ? <AnimatedEntry index={0}>{bubble}</AnimatedEntry> : bubble;
   }
 
-  const chatMsg = (
+  // Chat Mode: TTSButton lives in the meta row via metaExtra prop
+  const isPlainAssistant = msg.role === 'assistant' && !msg.isSystemInfo && !msg.toolCalls?.length;
+  const ttsMeta = isPlainAssistant && !isStreamingThis
+    ? <TTSButton text={stripControlTokens(msg.content)} messageId={msg.id} />
+    : undefined;
+
+  return (
     <ChatMessage
       message={msg}
       isStreaming={isStreamingThis}
@@ -83,18 +89,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
       canGenerateImage={imageModelLoaded && !isStreaming && !isGeneratingImage}
       showGenerationDetails={showGenerationDetails}
       animateEntry={animateEntry}
+      metaExtra={ttsMeta}
     />
   );
-
-  // Chat Mode: TTSButton for plain assistant messages (self-hides when not applicable)
-  if (msg.role === 'assistant' && !msg.isSystemInfo && !msg.toolCalls?.length && !isStreamingThis) {
-    return (
-      <>
-        {chatMsg}
-        <TTSButton text={stripControlTokens(msg.content)} messageId={msg.id} />
-      </>
-    );
-  }
-
-  return chatMsg;
 };
