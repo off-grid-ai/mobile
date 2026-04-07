@@ -19,6 +19,7 @@ jest.mock('react-native-fs', () => ({
   writeFile: jest.fn(),
   readFile: jest.fn(),
   stat: jest.fn(),
+  readDir: jest.fn(),
 }));
 
 jest.mock('react-native-audio-api', () => ({
@@ -269,9 +270,16 @@ describe('ttsService', () => {
       expect(size).toBe(0);
     });
 
-    it('returns size in MB', async () => {
+    it('returns size in MB by summing individual file sizes', async () => {
       mockRNFS.exists.mockResolvedValueOnce(true);
-      mockRNFS.stat.mockResolvedValueOnce({ size: 5 * 1024 * 1024 } as any);
+      // readDir(cacheRoot) → one conversation directory
+      (mockRNFS as any).readDir
+        .mockResolvedValueOnce([{ isDirectory: () => true, path: '/mock/docs/audio-cache/conv1' }])
+        // readDir(conv1) → two .pcm files, each 2.5 MB
+        .mockResolvedValueOnce([
+          { isDirectory: () => false, size: 2.5 * 1024 * 1024 },
+          { isDirectory: () => false, size: 2.5 * 1024 * 1024 },
+        ]);
       const size = await ttsService.getAudioCacheSizeMB();
       expect(size).toBeCloseTo(5);
     });
