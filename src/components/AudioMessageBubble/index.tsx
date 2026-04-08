@@ -16,7 +16,7 @@ import { TYPOGRAPHY, SPACING } from '../../constants';
 import type { ThemeColors, ThemeShadows } from '../../theme';
 
 const WAVEFORM_BARS = 28;
-const SPEED_STEPS: number[] = [0.5, 1.0, 1.5, 2.0];
+const SPEED_STEPS: number[] = [0.5, 0.8, 0.9, 1.0, 1.1, 1.2, 1.5, 2.0];
 
 interface AudioMessageBubbleProps {
   messageId: string;
@@ -248,10 +248,6 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
   const updateSettings = useTTSStore((s) => s.updateSettings);
 
   const [showTranscript, setShowTranscript] = useState(false);
-  const [speedIndex, setSpeedIndex] = useState(() => {
-    const idx = SPEED_STEPS.indexOf(speed);
-    return idx >= 0 ? idx : 1;
-  });
 
   const isThisPlaying = isSpeaking && currentMessageId === messageId && !isPaused;
   const isThisPaused = isSpeaking && currentMessageId === messageId && isPaused;
@@ -287,10 +283,15 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
   }, [isThisPlaying, isThisPaused, pause, resume, playMessage, speak, messageId, audioPath, transcript]);
 
   const handleSpeedCycle = useCallback(() => {
-    const next = (speedIndex + 1) % SPEED_STEPS.length;
-    setSpeedIndex(next);
+    let idx = SPEED_STEPS.indexOf(speed);
+    if (idx < 0) {
+      // Current speed not in steps (persona default) — find nearest step above
+      idx = SPEED_STEPS.findIndex((s) => s > speed) - 1;
+      if (idx < 0) idx = 0;
+    }
+    const next = (idx + 1) % SPEED_STEPS.length;
     updateSettings({ speed: SPEED_STEPS[next] });
-  }, [speedIndex, updateSettings]);
+  }, [speed, updateSettings]);
 
   /** Seek to a position by re-speaking from a character offset in the transcript */
   const handleSeek = useCallback((fraction: number) => {
@@ -317,7 +318,7 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
       style={styles.speedChip}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
-      <Text style={styles.speedText}>{SPEED_STEPS[speedIndex]}x</Text>
+      <Text style={styles.speedText}>{speed}x</Text>
     </TouchableOpacity>
   );
 
@@ -345,11 +346,10 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
 
   // Estimated total duration — adjusted by current playback speed
   const totalDurationRef = useRef(0);
-  const currentSpeed = SPEED_STEPS[speedIndex] ?? 1;
   const totalDuration = (() => {
     if (!audioPath && transcript) {
       const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
-      return Math.max(1, wordCount / (2.5 * currentSpeed));
+      return Math.max(1, wordCount / (2.5 * speed));
     }
     return durationSeconds;
   })();
