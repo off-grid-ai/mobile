@@ -15,6 +15,8 @@ import { QuickSettingsPopover, AttachPickerPopover } from './Popovers';
 import { useKeyboardAwarePopover } from './useKeyboardAwarePopover';
 import { useTTSStore } from '../../stores/ttsStore';
 import { useAppStore } from '../../stores';
+import { KOKORO_VOICES } from '../../constants/kokoroModels';
+import type { KokoroVoiceId } from '../../constants/kokoroModels';
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: MediaAttachment[], imageMode?: ImageModeState) => void;
@@ -87,7 +89,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const { attachments, removeAttachment, clearAttachments, handlePickImage, handlePickDocument, addAudioAttachment } = useAttachments(setAlertState);
   attachmentsRef.current = attachments;
   const ttsInterfaceMode = useTTSStore((s) => s.settings.interfaceMode);
+  const kokoroVoiceId = useTTSStore((s) => s.settings.kokoroVoiceId);
   const isAudioMode = ttsInterfaceMode === 'audio';
+
+  const handleVoiceCycle = () => {
+    triggerHaptic('impactLight');
+    // Stop playback first to avoid crash from KokoroTTSManager re-render
+    const tts = useTTSStore.getState();
+    if (tts.isSpeaking) { tts.stop(); }
+    const idx = KOKORO_VOICES.findIndex((v) => v.id === kokoroVoiceId);
+    const next = (idx + 1) % KOKORO_VOICES.length;
+    tts.updateSettings({ kokoroVoiceId: KOKORO_VOICES[next].id as KokoroVoiceId });
+  };
 
   const { isRecording, isModelLoading, isTranscribing, partialResult, error, voiceAvailable, startRecording, stopRecording, cancelRecording } = useVoiceInput({
     conversationId,
@@ -275,6 +288,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
           >
             <Icon name="tool" size={18} color={enabledToolCount > 0 ? colors.primary : !supportsToolCalling ? colors.textMuted : colors.textSecondary} />
+          </TouchableOpacity>
+          {/* Voice selector — cycle through Kokoro voices */}
+          <TouchableOpacity
+            style={styles.pillIconButton}
+            onPress={handleVoiceCycle}
+            hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+          >
+            <Icon name="user" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
 
           {/* Stop replaces mic while generating; mic shows otherwise */}

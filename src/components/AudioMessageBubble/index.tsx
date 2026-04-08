@@ -366,19 +366,6 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
         )}
       </View>
 
-      {/* Voice row — AI bubbles only: shows current voice, tap to cycle */}
-      {!isUser ? (
-        <TouchableOpacity
-          onPress={handleVoiceCycle}
-          style={styles.voiceRow}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
-          <Icon name="mic" size={11} color={colors.textMuted} />
-          <Text style={styles.voiceLabel}>{currentVoice.label}</Text>
-          <Icon name="chevron-right" size={11} color={colors.textMuted} />
-        </TouchableOpacity>
-      ) : null}
-
       {/* Transcript toggle */}
       {transcript ? (
         <TouchableOpacity
