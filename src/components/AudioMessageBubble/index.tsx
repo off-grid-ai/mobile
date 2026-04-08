@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Animated,
   ActivityIndicator,
+  PanResponder,
 } from 'react-native';
 import { stripMarkdownForSpeech } from '../../utils/messageContent';
 import { MarkdownText } from '../MarkdownText';
@@ -376,6 +377,7 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
 
   const isThisActive = ((isThisPlaying || isThisPaused) && currentMessageId === messageId) || isSeeking;
   const progress = isThisActive ? Math.min(1, localElapsed / Math.max(1, totalDuration)) : 0;
+  const displayProgress = dragProgress !== null ? dragProgress : progress;
 
   const durationText = (
     <Text style={styles.duration}>
@@ -383,16 +385,43 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
     </Text>
   );
 
-  // ── Seek handler — tap on the progress bar to jump to a position ──
+  // ── Seek handler — tap or drag on the progress bar ──
   const seekBarWidth = useRef(0);
-  const handleSeekBarTap = useCallback((e: any) => {
-    console.log('[AudioBubble] seekbar tapped, isThisActive:', isThisActive, 'width:', seekBarWidth.current, 'locationX:', e.nativeEvent.locationX);
-    if (isLoading || !seekBarWidth.current) return;
-    const locationX = e.nativeEvent.locationX;
-    const fraction = Math.max(0, Math.min(1, locationX / seekBarWidth.current));
-    console.log('[AudioBubble] seek fraction:', fraction);
-    handleSeek(fraction);
-  }, [isLoading, handleSeek]);
+  const seekBarX = useRef(0);
+  const [dragProgress, setDragProgress] = useState<number | null>(null);
+  const isDragging = useRef(false);
+  const dragFractionRef = useRef(0);
+  const handleSeekRef = useRef(handleSeek);
+  handleSeekRef.current = handleSeek;
+
+  const seekPanResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (e) => {
+      if (!seekBarWidth.current) return;
+      isDragging.current = true;
+      const fraction = Math.max(0, Math.min(1, e.nativeEvent.locationX / seekBarWidth.current));
+      dragFractionRef.current = fraction;
+      setDragProgress(fraction);
+    },
+    onPanResponderMove: (e) => {
+      if (!seekBarWidth.current || !isDragging.current) return;
+      const fraction = Math.max(0, Math.min(1, (e.nativeEvent.pageX - seekBarX.current) / seekBarWidth.current));
+      dragFractionRef.current = fraction;
+      setDragProgress(fraction);
+    },
+    onPanResponderRelease: () => {
+      if (isDragging.current) {
+        handleSeekRef.current(dragFractionRef.current);
+      }
+      isDragging.current = false;
+      setDragProgress(null);
+    },
+    onPanResponderTerminate: () => {
+      isDragging.current = false;
+      setDragProgress(null);
+    },
+  })).current;
 
   return (
     <View style={[styles.bubble, isUser && styles.bubbleUser]} testID={`audio-bubble-${messageId}`}>
@@ -421,19 +450,23 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
         )}
       </View>
 
-      {/* Full-width seekable progress bar */}
+      {/* Full-width seekable progress bar — tap or drag */}
       {!isLoading && !isUser && (
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={handleSeekBarTap}
-          onLayout={(e) => { seekBarWidth.current = e.nativeEvent.layout.width; }}
+        <View
+          {...seekPanResponder.panHandlers}
+          onLayout={(e) => {
+            seekBarWidth.current = e.nativeEvent.layout.width;
+            e.target.measure((_x: number, _y: number, _w: number, _h: number, pageX: number) => {
+              seekBarX.current = pageX;
+            });
+          }}
           style={styles.seekBarTouchable}
         >
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` as any, backgroundColor: colors.primary }]} />
+            <View style={[styles.progressFill, { width: `${Math.round(displayProgress * 100)}%` as any, backgroundColor: colors.primary }]} />
           </View>
-          <View style={[styles.progressThumb, { left: `${Math.round(progress * 100)}%` as any, backgroundColor: colors.primary }]} />
-        </TouchableOpacity>
+          <View style={[styles.progressThumb, { left: `${Math.round(displayProgress * 100)}%` as any, backgroundColor: colors.primary }]} />
+        </View>
       )}
 
       {/* Transcript toggle */}
