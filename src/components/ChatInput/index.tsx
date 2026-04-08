@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { View, TextInput, TouchableOpacity, Animated, StyleSheet, Text } from 'react-native';
+import { View, TextInput, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useTheme, useThemedStyles } from '../../theme';
 import { ImageModeState, MediaAttachment } from '../../types';
@@ -11,11 +11,12 @@ import { createStyles, PILL_ICONS_WIDTH, ANIM_DURATION_IN, ANIM_DURATION_OUT } f
 import { QueueRow } from './Toolbar';
 import { AttachmentPreview, useAttachments } from './Attachments';
 import { useVoiceInput } from './Voice';
-import { QuickSettingsPopover, AttachPickerPopover, VoicePickerPopover } from './Popovers';
+import { QuickSettingsPopover, AttachPickerPopover } from './Popovers';
 import { useKeyboardAwarePopover } from './useKeyboardAwarePopover';
 import { useTTSStore } from '../../stores/ttsStore';
 import { useAppStore } from '../../stores';
 import { KOKORO_VOICES } from '../../constants/kokoroModels';
+import { AudioModeLayout } from './AudioModeLayout';
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: MediaAttachment[], imageMode?: ImageModeState) => void;
@@ -36,7 +37,6 @@ interface ChatInputProps {
   supportsToolCalling?: boolean;
   supportsThinking?: boolean;
   onRepairVision?: () => void;
-  /** When set, mounts a single AttachStep for that index. Only one at a time to avoid waypoint dots. */
   activeSpotlight?: number | null;
 }
 
@@ -96,8 +96,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     [kokoroVoiceId],
   );
 
-  const handleVoicePress = () => voicePicker.show();
-
   const { isRecording, isModelLoading, isTranscribing, partialResult, error, voiceAvailable, startRecording, stopRecording, cancelRecording } = useVoiceInput({
     conversationId,
     onTranscript: (text) => {
@@ -110,7 +108,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       addAudioAttachment(uri, format, durationSeconds);
     },
     onAutoSend: isAudioMode ? (text, audio) => {
-      // Build audio attachment inline (avoids async state-update race)
       const audioAttachment: MediaAttachment = {
         id: `audio-${Date.now()}`,
         type: 'audio',
@@ -178,9 +175,49 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
-  const handleQuickSettingsPress = () => quickSettings.show();
-
-  const handleAttachPress = () => attachPicker.show();
+  // ─── Audio mode: simplified mic-only layout ─────────────────────────────────
+  if (isAudioMode) {
+    return (
+      <AudioModeLayout
+        styles={styles}
+        disabled={disabled}
+        isGenerating={isGenerating}
+        imageMode={imageMode}
+        imageModelLoaded={imageModelLoaded}
+        supportsThinking={supportsThinking}
+        supportsToolCalling={supportsToolCalling}
+        enabledToolCount={enabledToolCount}
+        thinkingEnabled={thinkingEnabled}
+        currentVoice={currentVoice}
+        attachments={attachments}
+        onRemoveAttachment={removeAttachment}
+        queueCount={queueCount}
+        queuedTexts={queuedTexts}
+        onClearQueue={onClearQueue}
+        isRecording={isRecording}
+        voiceAvailable={voiceAvailable}
+        isModelLoading={isModelLoading}
+        isTranscribing={isTranscribing}
+        partialResult={partialResult}
+        error={error}
+        onStartRecording={startRecording}
+        onStopRecording={stopRecording}
+        onCancelRecording={cancelRecording}
+        onStop={onStop}
+        onImageModeToggle={handleImageModeToggle}
+        onThinkingToggle={handleThinkingToggle}
+        onToolsPress={onToolsPress}
+        onVisionPress={handleVisionPress}
+        onPickDocument={handlePickDocument}
+        attachPicker={attachPicker}
+        voicePicker={voicePicker}
+        quickSettings={quickSettings}
+        supportsVision={supportsVision}
+        alertState={alertState}
+        setAlertState={setAlertState}
+      />
+    );
+  }
 
   const actionButton = canSend ? (
     <TouchableOpacity
@@ -214,148 +251,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     />
   );
 
-  // ─── Audio mode: simplified mic-only layout ─────────────────────────────────
-  if (isAudioMode) {
-    const audioStopButton = isGenerating && onStop ? (
-      <TouchableOpacity
-        testID="stop-button"
-        style={styles.circleButton}
-        onPress={handleStop}
-      >
-        <Icon name="square" size={18} color={colors.background} />
-      </TouchableOpacity>
-    ) : null;
-
-    return (
-      <View style={styles.container}>
-        <AttachmentPreview attachments={attachments} onRemove={removeAttachment} />
-        <QueueRow
-          queueCount={queueCount}
-          queuedTexts={queuedTexts}
-          onClearQueue={onClearQueue}
-        />
-        <View style={styles.audioModeRow}>
-          {/* Flat settings — all directly accessible in the audio bar */}
-          <TouchableOpacity
-            ref={attachPicker.triggerRef}
-            style={styles.pillIconButton}
-            onPress={handleAttachPress}
-            disabled={disabled}
-            hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-          >
-            <Icon name="plus" size={20} color={disabled ? colors.textMuted : colors.textSecondary} />
-          </TouchableOpacity>
-          {/* TTS mode toggle — switch between audio and chat mode (always visible) */}
-          <TouchableOpacity
-            style={styles.pillIconButton}
-            onPress={() => {
-              triggerHaptic('impactLight');
-              useTTSStore.getState().updateSettings({ interfaceMode: 'chat' });
-            }}
-            hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-          >
-            <Icon name="message-square" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-          {/* Image Gen — always visible; disabled when no image model loaded */}
-          <TouchableOpacity
-            style={styles.pillIconButton}
-            onPress={handleImageModeToggle}
-            disabled={disabled || !imageModelLoaded}
-            hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-          >
-            <Icon name="image" size={18} color={imageMode === 'force' ? colors.primary : !imageModelLoaded ? colors.textMuted : colors.textSecondary} />
-          </TouchableOpacity>
-          {/* Thinking toggle — only when model supports it */}
-          {supportsThinking && (
-            <TouchableOpacity
-              style={styles.pillIconButton}
-              onPress={handleThinkingToggle}
-              disabled={disabled}
-              hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-            >
-              <Icon name="zap" size={18} color={thinkingEnabled ? colors.primary : (disabled ? colors.textMuted : colors.textSecondary)} />
-            </TouchableOpacity>
-          )}
-          {/* Tools — always visible; disabled when model doesn't support tool calling */}
-          <TouchableOpacity
-            style={styles.pillIconButton}
-            onPress={() => { triggerHaptic('impactLight'); onToolsPress?.(); }}
-            disabled={disabled || !supportsToolCalling}
-            hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-          >
-            <Icon name="tool" size={18} color={enabledToolCount > 0 ? colors.primary : !supportsToolCalling ? colors.textMuted : colors.textSecondary} />
-          </TouchableOpacity>
-          {/* Voice selector — opens popover to pick Kokoro voice */}
-          <TouchableOpacity
-            ref={voicePicker.triggerRef}
-            style={styles.audioVoiceButton}
-            onPress={handleVoicePress}
-            hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-          >
-            <Icon name="user" size={14} color={colors.textSecondary} />
-            <Text style={styles.audioVoiceLabel}>{currentVoice.label}</Text>
-          </TouchableOpacity>
-
-          {/* Stop replaces mic while generating; mic shows otherwise */}
-          {isGenerating && onStop ? (
-            audioStopButton
-          ) : (
-            <VoiceRecordButton
-              isRecording={isRecording}
-              isAvailable={voiceAvailable}
-              isModelLoading={isModelLoading}
-              isTranscribing={isTranscribing}
-              partialResult={partialResult}
-              error={error}
-              disabled={disabled}
-              onStartRecording={startRecording}
-              onStopRecording={stopRecording}
-              onCancelRecording={cancelRecording}
-            />
-          )}
-        </View>
-
-        <AttachPickerPopover
-          visible={attachPicker.visible}
-          onClose={attachPicker.hide}
-          anchorY={attachPicker.anchor.y}
-          anchorX={attachPicker.anchor.x}
-          supportsVision={supportsVision}
-          onPhoto={handleVisionPress}
-          onDocument={handlePickDocument}
-        />
-        <VoicePickerPopover
-          visible={voicePicker.visible}
-          onClose={voicePicker.hide}
-          anchorY={voicePicker.anchor.y}
-          anchorX={voicePicker.anchor.x}
-        />
-        {/* QuickSettings kept for edge cases (popover opened before mode switch) */}
-        <QuickSettingsPopover
-          visible={quickSettings.visible}
-          onClose={quickSettings.hide}
-          anchorY={quickSettings.anchor.y}
-          anchorX={quickSettings.anchor.x}
-          imageMode={imageMode}
-          onImageModeToggle={handleImageModeToggle}
-          imageModelLoaded={imageModelLoaded}
-          supportsThinking={supportsThinking}
-          supportsToolCalling={supportsToolCalling}
-          enabledToolCount={enabledToolCount}
-          onToolsPress={onToolsPress}
-        />
-        <CustomAlert
-          visible={alertState.visible}
-          title={alertState.title}
-          message={alertState.message}
-          buttons={alertState.buttons}
-          onClose={() => setAlertState(hideAlert())}
-        />
-      </View>
-    );
-  }
-
-  const content = (
+  return (
     <View style={styles.container}>
       <AttachmentPreview attachments={attachments} onRemove={removeAttachment} />
       <QueueRow
@@ -364,7 +260,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         onClearQueue={onClearQueue}
       />
       <View style={styles.mainRow}>
-        {/* Pill: text input + right icons */}
         <View style={styles.pill}>
           <TextInput
             ref={inputRef}
@@ -380,7 +275,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             blurOnSubmit={false}
             returnKeyType="default"
           />
-          {/* Icons collapse when user starts typing, reappear when input is empty */}
           <Animated.View
             pointerEvents={hasText ? 'none' : 'auto'}
             style={[styles.pillIcons, {
@@ -389,23 +283,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               overflow: 'hidden' as const,
             }]}
           >
-            {/* Attach button — opens picker for image or document */}
             <TouchableOpacity
               ref={attachPicker.triggerRef}
               testID="attach-button"
               style={styles.pillIconButton}
-              onPress={handleAttachPress}
+              onPress={() => attachPicker.show()}
               disabled={disabled}
               hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             >
-              <Icon
-                name="plus"
-                size={20}
-                color={disabled ? colors.textMuted : colors.textSecondary}
-              />
+              <Icon name="plus" size={20} color={disabled ? colors.textMuted : colors.textSecondary} />
             </TouchableOpacity>
-
-            {/* Thinking toggle — only when model supports it */}
             {supportsThinking && (
               <TouchableOpacity
                 testID="thinking-toggle-button"
@@ -417,23 +304,19 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 <Icon name="zap" size={18} color={thinkingEnabled ? colors.primary : (disabled ? colors.textMuted : colors.textSecondary)} />
               </TouchableOpacity>
             )}
-
-            {/* Quick settings button */}
             <TouchableOpacity
               ref={quickSettings.triggerRef}
               testID="quick-settings-button"
               style={styles.pillIconButton}
-              onPress={handleQuickSettingsPress}
+              onPress={() => quickSettings.show()}
               disabled={disabled}
               hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             >
               <Icon name="settings" size={18} color={disabled ? colors.textMuted : colors.textSecondary} />
             </TouchableOpacity>
-
           </Animated.View>
         </View>
 
-        {/* Circular action button — conditionally wrapped with AttachStep */}
         {activeSpotlight === 12 ? (
           <AttachStep index={12} style={spotlightStyles.centered}>{actionButton}</AttachStep>
         ) : actionButton}
@@ -448,7 +331,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         onPhoto={handleVisionPress}
         onDocument={handlePickDocument}
       />
-
       <QuickSettingsPopover
         visible={quickSettings.visible}
         onClose={quickSettings.hide}
@@ -462,7 +344,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         enabledToolCount={enabledToolCount}
         onToolsPress={onToolsPress}
       />
-
       <CustomAlert
         visible={alertState.visible}
         title={alertState.title}
@@ -472,12 +353,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       />
     </View>
   );
-
-  return content;
 };
 
 const spotlightStyles = StyleSheet.create({
   centered: { alignSelf: 'center' },
 });
-
-

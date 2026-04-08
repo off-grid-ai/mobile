@@ -1,48 +1,41 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
-  Text,
-  TouchableOpacity,
   StyleSheet,
   Animated,
-  ActivityIndicator,
-  PanResponder,
 } from 'react-native';
 import { stripMarkdownForSpeech } from '../../utils/messageContent';
-import { MarkdownText } from '../MarkdownText';
-import Icon from 'react-native-vector-icons/Feather';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useTTSStore } from '../../stores/ttsStore';
 import { TYPOGRAPHY, SPACING } from '../../constants';
 import type { ThemeColors, ThemeShadows } from '../../theme';
+import {
+  usePlaybackState,
+  useElapsedTimer,
+  useSeekHandler,
+  PlayButton,
+  SpeedChip,
+  DurationText,
+  SeekBar,
+  TranscriptSection,
+} from './PlaybackControls';
 
 const WAVEFORM_BARS = 28;
-const SPEED_STEPS: number[] = [0.5, 0.8, 0.9, 1.0, 1.1, 1.2, 1.5, 2.0];
 
 interface AudioMessageBubbleProps {
   messageId: string;
   audioPath: string;
   waveformData: number[];
   durationSeconds: number;
-  /** Optional plain-text transcript to show when user expands */
   transcript?: string;
-  /** True for user-sent voice recordings (right-aligned) */
   isUser?: boolean;
-  /** True while the LLM is still generating — shows a thinking indicator */
   isLoading?: boolean;
   /** Thinking/reasoning content from the model — shown as collapsible block above waveform */
-  reasoningContent?: string;
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
+  _reasoningContent?: string;
 }
 
 function subsample(data: number[], count: number): number[] {
   if (data.length === 0) {
-    // Generate a visible placeholder waveform pattern
     return Array.from({ length: count }, (_, i) => 0.25 + 0.25 * Math.sin((i / count) * Math.PI * 4));
   }
   const step = data.length / count;
@@ -62,11 +55,7 @@ function normalize(data: number[]): number[] {
  * Waveform bar display — three modes:
  *
  *  1. `amplitude` provided (0–1): VU-meter driven by live Kokoro chunk RMS.
- *     Instant attack, 350ms decay. Used for AI messages via Kokoro.
- *
  *  2. `isPlaying` true but no `amplitude`: wave animation (staggered bounce).
- *     Used for user voice recordings played via file-based playback.
- *
  *  3. Neither: static bars at resting shape.
  */
 const WaveformBars: React.FC<{
@@ -77,7 +66,6 @@ const WaveformBars: React.FC<{
 }> = ({ data, colors, amplitude, isPlaying }) => {
   const bars = useMemo(() => normalize(subsample(data, WAVEFORM_BARS)), [data]);
 
-  // ── VU-meter mode (amplitude-driven) ─────────────────────────────────────
   const ampAnim = useRef(new Animated.Value(0)).current;
   const ampAnimRef = useRef<Animated.CompositeAnimation | null>(null);
 
@@ -86,10 +74,8 @@ const WaveformBars: React.FC<{
     ampAnimRef.current?.stop();
     const current = (ampAnim as any)._value ?? 0;
     if (amplitude >= current) {
-      // Instant attack — bars jump up immediately
       ampAnim.setValue(amplitude);
     } else {
-      // Slow decay — bars fall smoothly
       ampAnimRef.current = Animated.timing(ampAnim, {
         toValue: amplitude,
         duration: 250,
@@ -99,7 +85,6 @@ const WaveformBars: React.FC<{
     }
   }, [amplitude, ampAnim]);
 
-  // ── Wave mode (bounce animation for file playback) ───────────────────────
   const waveAnims = useRef(bars.map(() => new Animated.Value(0))).current;
   const waveRef = useRef<Animated.CompositeAnimation[]>([]);
 
@@ -123,7 +108,6 @@ const WaveformBars: React.FC<{
     return () => waveRef.current.forEach(a => a.stop());
   }, [isPlaying, amplitude, waveAnims]);
 
-  // Reset VU-meter when not playing — bars return to resting shape
   useEffect(() => {
     if (!isPlaying && amplitude === undefined) {
       ampAnim.setValue(0);
@@ -138,10 +122,8 @@ const WaveformBars: React.FC<{
 
         let heightStyle: number | Animated.AnimatedInterpolation<number> = maxH;
         if (amplitude !== undefined) {
-          // VU-meter: driven by live RMS
           heightStyle = ampAnim.interpolate({ inputRange: [0, 1], outputRange: [minH, maxH] });
         } else if (isPlaying) {
-          // Wave: staggered bounce animation
           heightStyle = waveAnims[i].interpolate({ inputRange: [0, 1], outputRange: [minH, maxH] });
         }
 
@@ -229,268 +211,77 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
   transcript,
   isUser = false,
   isLoading = false,
-  reasoningContent,
+  _reasoningContent,
 }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-
-  // ── Targeted selectors — only re-render when these specific values change,
-  //    NOT on every amplitude update (which fires ~30×/s during playback) ──
-  const isSpeaking = useTTSStore((s) => s.isSpeaking);
-  const isPaused = useTTSStore((s) => s.isPaused);
-  const isAudioPlaying = useTTSStore((s) => s.isAudioPlaying);
-  const currentMessageId = useTTSStore((s) => s.currentMessageId);
   const speed = useTTSStore((s) => s.settings.speed);
   const playMessage = useTTSStore((s) => s.playMessage);
   const speak = useTTSStore((s) => s.speak);
-  const stop = useTTSStore((s) => s.stop);
-  const pause = useTTSStore((s) => s.pause);
-  const resume = useTTSStore((s) => s.resume);
-  const updateSettings = useTTSStore((s) => s.updateSettings);
 
-  const [showTranscript, setShowTranscript] = useState(false);
-
-  const isThisPlaying = isSpeaking && currentMessageId === messageId && !isPaused;
-  const isThisPaused = isSpeaking && currentMessageId === messageId && isPaused;
-  const isThisAudible = isAudioPlaying && currentMessageId === messageId && !isPaused;
-  const isThisLoading = isThisPlaying && !isThisAudible;
+  const { isThisPlaying, isThisPaused, isThisAudible, isThisLoading } = usePlaybackState(messageId);
+  const currentMessageId = useTTSStore((s) => s.currentMessageId);
   const [isSeeking, setIsSeeking] = useState(false);
-
-  // ── Wall-clock elapsed timer ────────────────────────────────────────────
-  const [localElapsed, setLocalElapsed] = useState(0);
-  const startTimeRef = useRef<number>(0);
-  const pausedAtRef = useRef<number>(0);
-  const seekOffsetRef = useRef<number>(0); // preserved across stop/restart during seek
-  useEffect(() => {
-    if (!isThisAudible && !isThisPaused) {
-      // Don't reset if we have a pending seek offset (stop→speak cycle)
-      if (seekOffsetRef.current === 0) {
-        setLocalElapsed(0);
-        pausedAtRef.current = 0;
-      }
-      return;
-    }
-    if (isThisPaused) {
-      pausedAtRef.current = localElapsed;
-      return;
-    }
-    // Use seek offset if set, then clear it
-    const offset = seekOffsetRef.current || pausedAtRef.current;
-    seekOffsetRef.current = 0;
-    startTimeRef.current = Date.now() - offset * 1000;
-    const id = setInterval(() => {
-      setLocalElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-    }, 500);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isThisAudible, isThisPaused]);
+  const seekOffsetRef = useRef<number>(0);
+  const { localElapsed, setLocalElapsed } = useElapsedTimer(isThisAudible, isThisPaused, seekOffsetRef);
 
   const handlePlayPause = useCallback(() => {
-    console.log('[AudioBubble] play/pause tapped, messageId:', messageId, 'isThisPlaying:', isThisPlaying, 'isThisPaused:', isThisPaused, 'transcript length:', transcript?.length);
+    const { pause, resume } = useTTSStore.getState();
     if (isThisPaused) { resume(); return; }
     if (isThisPlaying) { pause(); return; }
     if (audioPath) {
       playMessage(messageId, audioPath);
     } else {
       const text = stripMarkdownForSpeech(transcript ?? '');
-      console.log('[AudioBubble] speaking messageId:', messageId, 'text preview:', text.slice(0, 80));
       speak(text, messageId);
     }
-  }, [isThisPlaying, isThisPaused, pause, resume, playMessage, speak, messageId, audioPath, transcript]);
+  }, [isThisPlaying, isThisPaused, playMessage, speak, messageId, audioPath, transcript]);
 
-  const handleSpeedCycle = useCallback(() => {
-    let idx = SPEED_STEPS.indexOf(speed);
-    if (idx < 0) {
-      // Current speed not in steps (persona default) — find nearest step above
-      idx = SPEED_STEPS.findIndex((s) => s > speed) - 1;
-      if (idx < 0) idx = 0;
-    }
-    const next = (idx + 1) % SPEED_STEPS.length;
-    updateSettings({ speed: SPEED_STEPS[next] });
-  }, [speed, updateSettings]);
-
-  /** Seek to a position by re-speaking from a character offset in the transcript */
-  const handleSeek = useCallback((fraction: number) => {
-    console.log('[AudioBubble] handleSeek called, fraction:', fraction, 'transcript?', !!transcript, 'audioPath?', !!audioPath);
-    if (!transcript || audioPath) return; // only for AI TTS bubbles
-    const text = stripMarkdownForSpeech(transcript);
-    const charOffset = Math.floor(fraction * text.length);
-    // Find the nearest sentence boundary to avoid cutting mid-word
-    const seekPoint = text.lastIndexOf('. ', charOffset) + 2 || charOffset;
-    const remaining = text.slice(seekPoint).trim();
-    console.log('[AudioBubble] seeking to', Math.round(fraction * 100) + '%', 'charOffset:', charOffset, 'remaining:', remaining.length, 'chars');
-    if (!remaining) return;
-    // Set seek offset so the timer picks up from the right position after stop→speak
-    const seekSeconds = Math.floor(fraction * totalDurationRef.current);
-    seekOffsetRef.current = seekSeconds;
-    setLocalElapsed(seekSeconds);
-    // Keep UI stable during the stop→speak transition
-    setIsSeeking(true);
-    stop();
-    setTimeout(() => {
-      speak(remaining, messageId).finally(() => setIsSeeking(false));
-    }, 200);
-  }, [transcript, audioPath, stop, speak, messageId]);
-
-  const speedChip = (
-    <TouchableOpacity
-      onPress={handleSpeedCycle}
-      style={styles.speedChip}
-      hitSlop={{ top: 8, left: 8, right: 8 }}
-    >
-      <Text style={styles.speedText}>{speed}x</Text>
-    </TouchableOpacity>
-  );
-
-  const playButton = isLoading ? (
-    <View style={[styles.playButton, { opacity: 0.35 }]}>
-      <Icon name="play" size={16} color={colors.primary} />
-    </View>
-  ) : isThisLoading ? (
-    <View style={styles.playButton}>
-      <ActivityIndicator size="small" color={colors.primary} />
-    </View>
-  ) : (
-    <TouchableOpacity
-      onPress={handlePlayPause}
-      style={styles.playButton}
-      hitSlop={{ top: 8, left: 8, right: 8 }}
-    >
-      <Icon
-        name={isThisPlaying ? 'pause' : 'play'}
-        size={16}
-        color={colors.primary}
-      />
-    </TouchableOpacity>
-  );
-
-  // Estimated total duration — adjusted by current playback speed
   const totalDurationRef = useRef(0);
-  const totalDuration = (() => {
+  const totalDuration = useMemo(() => {
     if (!audioPath && transcript) {
       const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
       return Math.max(1, wordCount / (2.5 * speed));
     }
     return durationSeconds;
-  })();
+  }, [audioPath, transcript, speed, durationSeconds]);
   totalDurationRef.current = totalDuration;
+
+  const handleSeek = useSeekHandler({
+    transcript, audioPath, messageId,
+    totalDurationRef, seekOffsetRef, setLocalElapsed, setIsSeeking,
+  });
 
   const isThisActive = ((isThisPlaying || isThisPaused) && currentMessageId === messageId) || isSeeking;
   const progress = isThisActive ? Math.min(1, localElapsed / Math.max(1, totalDuration)) : 0;
-  const displayProgress = dragProgress !== null ? dragProgress : progress;
-
-  const durationText = (
-    <Text style={styles.duration}>
-      {isLoading ? '—' : formatDuration(totalDuration)}
-    </Text>
-  );
-
-  // ── Seek handler — tap or drag on the progress bar ──
-  const seekBarWidth = useRef(0);
-  const seekBarX = useRef(0);
-  const [dragProgress, setDragProgress] = useState<number | null>(null);
-  const isDragging = useRef(false);
-  const dragFractionRef = useRef(0);
-  const handleSeekRef = useRef(handleSeek);
-  handleSeekRef.current = handleSeek;
-
-  const seekPanResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (e) => {
-      if (!seekBarWidth.current) return;
-      isDragging.current = true;
-      const fraction = Math.max(0, Math.min(1, e.nativeEvent.locationX / seekBarWidth.current));
-      dragFractionRef.current = fraction;
-      setDragProgress(fraction);
-    },
-    onPanResponderMove: (e) => {
-      if (!seekBarWidth.current || !isDragging.current) return;
-      const fraction = Math.max(0, Math.min(1, (e.nativeEvent.pageX - seekBarX.current) / seekBarWidth.current));
-      dragFractionRef.current = fraction;
-      setDragProgress(fraction);
-    },
-    onPanResponderRelease: () => {
-      if (isDragging.current) {
-        handleSeekRef.current(dragFractionRef.current);
-      }
-      isDragging.current = false;
-      setDragProgress(null);
-    },
-    onPanResponderTerminate: () => {
-      isDragging.current = false;
-      setDragProgress(null);
-    },
-  })).current;
 
   return (
     <View style={[styles.bubble, isUser && styles.bubbleUser]} testID={`audio-bubble-${messageId}`}>
-      {/* Playback row */}
       <View style={styles.playRow}>
         {isUser ? (
           <>
-            {speedChip}
-            {durationText}
+            <SpeedChip styles={styles} />
+            <DurationText isLoading={isLoading} totalDuration={totalDuration} styles={styles} />
             <WaveformBars data={waveformData} colors={colors} isPlaying={isThisPlaying} />
-            {playButton}
+            <PlayButton isLoading={isLoading} isThisLoading={isThisLoading} isThisPlaying={isThisPlaying} onPlayPause={handlePlayPause} colors={colors} styles={styles} />
           </>
         ) : (
           <>
-            {playButton}
+            <PlayButton isLoading={isLoading} isThisLoading={isThisLoading} isThisPlaying={isThisPlaying} onPlayPause={handlePlayPause} colors={colors} styles={styles} />
             {isLoading
               ? <ThinkingDots colors={colors} />
-              : <WaveformBars
-                  data={waveformData}
-                  colors={colors}
-                  isPlaying={isThisAudible}
-                />}
-            {durationText}
-            {speedChip}
+              : <WaveformBars data={waveformData} colors={colors} isPlaying={isThisAudible} />}
+            <DurationText isLoading={isLoading} totalDuration={totalDuration} styles={styles} />
+            <SpeedChip styles={styles} />
           </>
         )}
       </View>
 
-      {/* Full-width seekable progress bar — tap or drag */}
       {!isLoading && !isUser && (
-        <View
-          {...seekPanResponder.panHandlers}
-          onLayout={(e) => {
-            seekBarWidth.current = e.nativeEvent.layout.width;
-            e.target.measure((_x: number, _y: number, _w: number, _h: number, pageX: number) => {
-              seekBarX.current = pageX;
-            });
-          }}
-          style={styles.seekBarTouchable}
-        >
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${Math.round(displayProgress * 100)}%` as any, backgroundColor: colors.primary }]} />
-          </View>
-          <View style={[styles.progressThumb, { left: `${Math.round(displayProgress * 100)}%` as any, backgroundColor: colors.primary }]} />
-        </View>
+        <SeekBar displayProgress={progress} colors={colors} styles={styles} onSeek={handleSeek} />
       )}
 
-      {/* Transcript toggle */}
-      {transcript ? (
-        <TouchableOpacity
-          onPress={() => setShowTranscript((v) => !v)}
-          style={styles.transcriptToggle}
-        >
-          <Text style={styles.transcriptToggleText}>
-            {showTranscript ? 'Hide transcript' : 'Show transcript'}
-          </Text>
-          <Icon
-            name={showTranscript ? 'chevron-up' : 'chevron-down'}
-            size={11}
-            color={colors.textMuted}
-          />
-        </TouchableOpacity>
-      ) : null}
-
-      {showTranscript && transcript ? (
-        <View style={styles.transcriptContent}>
-          <MarkdownText>{transcript}</MarkdownText>
-        </View>
-      ) : null}
+      <TranscriptSection transcript={transcript} colors={colors} styles={styles} />
     </View>
   );
 };
@@ -525,6 +316,9 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     backgroundColor: `${colors.primary}20`,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
+  },
+  playButtonDisabled: {
+    opacity: 0.35,
   },
   duration: {
     ...TYPOGRAPHY.meta,
@@ -575,11 +369,6 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
   transcriptToggleText: {
     ...TYPOGRAPHY.meta,
     color: colors.textMuted,
-  },
-  transcript: {
-    ...TYPOGRAPHY.bodySmall,
-    color: colors.textSecondary,
-    lineHeight: 18,
   },
   transcriptContent: {
     paddingTop: SPACING.xs,

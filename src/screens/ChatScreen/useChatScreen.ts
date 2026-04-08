@@ -22,7 +22,7 @@ import { stripControlTokens, stripMarkdownForSpeech } from '../../utils/messageC
 export type { AlertState, ChatMessageItem, StreamingState };
 export { getDisplayMessages, getPlaceholderText };
 
-function triggerAudioModeGeneration(conversationId: string, messageId: string, content: string) {
+function _triggerAudioModeGeneration(conversationId: string, messageId: string, content: string) {
   useChatStore.getState().updateMessageAudio(conversationId, messageId, { isAudioModeMessage: true });
   useTTSStore.getState().speak(stripMarkdownForSpeech(stripControlTokens(content)), messageId);
 }
@@ -262,7 +262,7 @@ export const useChatScreen = () => {
       };
       playNext();
     }
-  }, [streamingMessage, isStreamingForThisConversation]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [streamingMessage, isStreamingForThisConversation]);
 
   useEffect(() => {
     const was = prevStreamingRef.current;

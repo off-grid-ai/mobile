@@ -48,98 +48,126 @@ const AudioModeThinkingBlock: React.FC<{ msg: Message }> = ({ msg }) => {
   );
 };
 
-function buildAudioBubbleProps(msg: Message) {
+interface AudioBubbleProps {
+  messageId: string;
+  audioPath: string;
+  waveformData: number[];
+  durationSeconds: number;
+  transcript: string;
+  _reasoningContent?: string;
+}
+
+function buildAudioBubbleProps(msg: Message): AudioBubbleProps {
   return {
     messageId: msg.id,
     audioPath: msg.audioPath ?? '',
     waveformData: msg.waveformData ?? [],
     durationSeconds: msg.audioDurationSeconds ?? 0,
     transcript: stripControlTokens(msg.content),
-    reasoningContent: msg.reasoningContent,
+    _reasoningContent: msg.reasoningContent,
   };
 }
 
-export const MessageRenderer: React.FC<MessageRendererProps> = ({
-  item,
-  index,
-  displayMessagesLength,
-  animateLastN,
-  imageModelLoaded,
-  isStreaming,
-  isGeneratingImage,
-  showGenerationDetails,
-  onCopy,
-  onRetry,
-  onEdit,
-  onGenerateImage,
-  onImagePress,
-}) => {
+/** Wraps content with AnimatedEntry if needed */
+function wrapAnimated(content: React.ReactElement, shouldAnimate: boolean): React.ReactElement {
+  return shouldAnimate ? <AnimatedEntry index={0}>{content}</AnimatedEntry> : content;
+}
+
+/** Renders a user voice message as an audio bubble */
+function renderUserAudioBubble(msg: Message, audioAtt: any, shouldAnimate: boolean): React.ReactElement {
+  const bubble = (
+    <View style={audioStyles.userContainer}>
+      <AudioMessageBubble
+        messageId={msg.id}
+        audioPath={audioAtt.uri}
+        waveformData={[]}
+        durationSeconds={audioAtt.audioDurationSeconds ?? 0}
+        transcript={msg.content}
+        isUser
+      />
+    </View>
+  );
+  return wrapAnimated(bubble, shouldAnimate);
+}
+
+/** Renders a streaming/thinking assistant message in audio mode as a ChatMessage */
+function renderAudioStreamingMessage(
+  msg: Message,
+  isStreamingThis: boolean,
+  props: MessageRendererProps,
+): React.ReactElement {
+  return (
+    <ChatMessage
+      message={msg}
+      isStreaming={isStreamingThis}
+      onCopy={props.onCopy}
+      onRetry={props.onRetry}
+      onEdit={props.onEdit}
+      onGenerateImage={props.onGenerateImage}
+      onImagePress={props.onImagePress}
+      canGenerateImage={false}
+      showGenerationDetails={props.showGenerationDetails}
+      animateEntry={false}
+    />
+  );
+}
+
+/** Renders a completed assistant audio bubble */
+function renderAudioAssistantBubble(msg: Message, shouldAnimate: boolean): React.ReactElement {
+  const hasThinking = !!msg.reasoningContent || !!parseThinkingContent(msg.content).thinking;
+  const bubble = (
+    <View style={audioStyles.assistantContainer}>
+      {hasThinking && <AudioModeThinkingBlock msg={msg} />}
+      <AudioMessageBubble {...buildAudioBubbleProps(msg)} />
+    </View>
+  );
+  return wrapAnimated(bubble, shouldAnimate);
+}
+
+export const MessageRenderer: React.FC<MessageRendererProps> = (props) => {
+  const {
+    item,
+    index,
+    displayMessagesLength,
+    animateLastN,
+    imageModelLoaded,
+    isStreaming,
+    isGeneratingImage,
+    showGenerationDetails,
+    onCopy,
+    onRetry,
+    onEdit,
+    onGenerateImage,
+    onImagePress,
+  } = props;
+
   const ttsMode = useTTSStore((s) => s.settings.interfaceMode);
   const msg = item as Message;
   const animateEntry = animateLastN > 0 && index >= displayMessagesLength - animateLastN;
   const isStreamingThis = item.id === 'streaming';
 
-  // User voice message: always show as audio bubble (playable in both chat and audio mode)
+  // User voice message: always show as audio bubble
   if (msg.role === 'user') {
     const audioAtt = msg.attachments?.find((a) => a.type === 'audio');
     if (audioAtt) {
-      const bubble = (
-        <View style={audioStyles.userContainer}>
-          <AudioMessageBubble
-            messageId={msg.id}
-            audioPath={audioAtt.uri}
-            waveformData={[]}
-            durationSeconds={audioAtt.audioDurationSeconds ?? 0}
-            transcript={msg.content}
-            isUser
-          />
-        </View>
-      );
-      return animateEntry ? <AnimatedEntry index={0}>{bubble}</AnimatedEntry> : bubble;
+      return renderUserAudioBubble(msg, audioAtt, animateEntry);
     }
   }
 
   const isAudioAssistant = msg.role === 'assistant' && !msg.isSystemInfo && !msg.toolCalls?.length;
 
-  // Thinking placeholder + audio streaming: intercept before the audio bubble check
-  // so these don't accidentally render as empty AudioMessageBubbles.
-  // Let them fall through to ChatMessage which renders the proper chat bubble with dots.
+  // Thinking placeholder + audio streaming
   const isThinkingItem = !!(msg as any).isThinking;
   if (isAudioAssistant && ttsMode === 'audio' && (isStreamingThis || isThinkingItem)) {
-    // In audio mode: ChatMessage renders the 3-dot bubble for thinking,
-    // "Generating response..." for streaming text. Both inside a proper chat bubble.
-    return (
-      <ChatMessage
-        message={msg}
-        isStreaming={isStreamingThis}
-        onCopy={onCopy}
-        onRetry={onRetry}
-        onEdit={onEdit}
-        onGenerateImage={onGenerateImage}
-        onImagePress={onImagePress}
-        canGenerateImage={false}
-        showGenerationDetails={showGenerationDetails}
-        animateEntry={false}
-      />
-    );
+    return renderAudioStreamingMessage(msg, isStreamingThis, props);
   }
 
-  // Audio Mode: show assistant messages as audio bubbles ONLY after streaming ends.
-  // In chat mode, all messages render as text (even ones generated in audio mode).
-  // If the message has reasoningContent, render it as a regular ChatMessage first
-  // (which shows the native ThinkingBlock), then the audio bubble below.
+  // Audio Mode: show assistant messages as audio bubbles after streaming ends
   if (isAudioAssistant && ttsMode === 'audio' && !isStreamingThis) {
-    const hasThinking = !!msg.reasoningContent || !!parseThinkingContent(msg.content).thinking;
-    const bubble = (
-      <View style={audioStyles.assistantContainer}>
-        {hasThinking && <AudioModeThinkingBlock msg={msg} />}
-        <AudioMessageBubble {...buildAudioBubbleProps(msg)} />
-      </View>
-    );
-    return animateEntry ? <AnimatedEntry index={0}>{bubble}</AnimatedEntry> : bubble;
+    return renderAudioAssistantBubble(msg, animateEntry);
   }
 
-  // Chat Mode: TTSButton lives in the meta row via metaExtra prop
+  // Chat Mode: TTSButton lives in the meta row
   const isPlainAssistant = msg.role === 'assistant' && !msg.isSystemInfo && !msg.toolCalls?.length;
   const ttsMeta = isPlainAssistant && !isStreamingThis
     ? <TTSButton text={stripControlTokens(msg.content)} messageId={msg.id} />
@@ -162,7 +190,6 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
   );
 };
 
-// Matches the horizontal padding of ChatMessage so audio bubbles align with text bubbles
 const audioStyles = StyleSheet.create({
   userContainer: {
     paddingRight: 16,

@@ -296,12 +296,11 @@ export const VoicePickerPopover: React.FC<VoicePickerPopoverProps> = ({
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={popoverStyles.overlay}>
           <TouchableWithoutFeedback>
-            <View style={[popoverStyles.popover, {
+            <View style={[popoverStyles.popover, voicePickerStyles.popover, {
               backgroundColor: colors.surface,
               borderColor: colors.border,
               bottom: anchorY + 8,
               right: anchorX,
-              minWidth: 200,
             }]}>
               {KOKORO_VOICES.map((voice) => {
                 const isActive = voice.id === kokoroVoiceId;
@@ -339,6 +338,9 @@ export const VoicePickerPopover: React.FC<VoicePickerPopoverProps> = ({
 };
 
 const voicePickerStyles = StyleSheet.create({
+  popover: {
+    minWidth: 200,
+  },
   labelCol: {
     flex: 1,
   },
