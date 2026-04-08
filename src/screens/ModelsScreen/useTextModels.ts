@@ -293,7 +293,7 @@ export function useTextModels(setAlertState: (s: AlertState) => void) {
   const recommendedAsModelInfo = useMemo((): ModelInfo[] => {
     const maxParams = deviceRecommendation.maxParameters;
     const models = RECOMMENDED_MODELS
-      .filter(m => m.params <= maxParams)
+      .filter(m => m.params <= maxParams && (!m.maxRam || ramGB <= m.maxRam))
       .filter(m => {
         if (filterState.type !== 'all' && m.type !== filterState.type) return false;
         if (filterState.orgs.length > 0 && !filterState.orgs.includes(m.org)) return false;
@@ -312,7 +312,7 @@ export function useTextModels(setAlertState: (s: AlertState) => void) {
     // Pick the best-fit per family using the same bestFitScore used for "for you" recommendations
     return Object.values(TRENDING_FAMILIES)
       .map(ids => RECOMMENDED_MODELS
-        .filter(m => ids.includes(m.id) && m.params <= maxParams)
+        .filter(m => ids.includes(m.id) && m.params <= maxParams && (!m.maxRam || ramGB <= m.maxRam))
         .map(m => mapCuratedModel(m, recommendedModelDetails))
         .sort((a, b) => bestFitScore(a, ramGB) - bestFitScore(b, ramGB))[0])
       .filter((m): m is ModelInfo => Boolean(m));

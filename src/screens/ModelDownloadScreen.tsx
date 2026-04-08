@@ -47,7 +47,7 @@ const RecommendedModelCard: React.FC<RecommendedCardProps> = ({ model, recFile, 
     isDownloaded={!!downloaded}
     isDownloading={!!progress}
     downloadProgress={progress?.progress}
-    isCompatible={model.minRam <= totalRamGB}
+    isCompatible={model.minRam <= totalRamGB && (!model.maxRam || totalRamGB <= model.maxRam)}
     isTrending={isTrending}
     onPress={() => {}}
     onDownload={downloaded ? undefined : onDownload}
@@ -91,7 +91,7 @@ export const ModelDownloadScreen: React.FC<Props> = ({ navigation }) => {
         if (cancelled) return;
         setModelRecommendation(rec);
         const ram = hardwareService.getTotalMemoryGB();
-        const compat = RECOMMENDED_MODELS.filter((m) => m.minRam <= ram);
+        const compat = RECOMMENDED_MODELS.filter((m) => m.minRam <= ram && (!m.maxRam || ram <= m.maxRam));
         if (cancelled) return;
         setRecommendedModels(compat);
         const files = await fetchModelFiles(compat);
@@ -230,7 +230,7 @@ export const ModelDownloadScreen: React.FC<Props> = ({ navigation }) => {
     const ids = new Set<string>();
     for (const familyIds of Object.values(TRENDING_FAMILIES)) {
       const best = RECOMMENDED_MODELS
-        .filter(m => familyIds.includes(m.id) && m.minRam <= totalRamGB)
+        .filter(m => familyIds.includes(m.id) && m.minRam <= totalRamGB && (!m.maxRam || totalRamGB <= m.maxRam))
         .sort((a, b) => score(a) - score(b))[0];
       if (best) ids.add(best.id);
     }
