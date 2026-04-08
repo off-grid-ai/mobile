@@ -285,12 +285,15 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
   }, [isThisAudible, isThisPaused]);
 
   const handlePlayPause = useCallback(() => {
+    console.log('[AudioBubble] play/pause tapped, messageId:', messageId, 'isThisPlaying:', isThisPlaying, 'isThisPaused:', isThisPaused, 'transcript length:', transcript?.length);
     if (isThisPaused) { resume(); return; }
     if (isThisPlaying) { pause(); return; }
     if (audioPath) {
       playMessage(messageId, audioPath);
     } else {
-      speak(stripMarkdownForSpeech(transcript ?? ''), messageId);
+      const text = stripMarkdownForSpeech(transcript ?? '');
+      console.log('[AudioBubble] speaking messageId:', messageId, 'text preview:', text.slice(0, 80));
+      speak(text, messageId);
     }
   }, [isThisPlaying, isThisPaused, pause, resume, playMessage, speak, messageId, audioPath, transcript]);
 
