@@ -387,12 +387,12 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
   const seekBarWidth = useRef(0);
   const handleSeekBarTap = useCallback((e: any) => {
     console.log('[AudioBubble] seekbar tapped, isThisActive:', isThisActive, 'width:', seekBarWidth.current, 'locationX:', e.nativeEvent.locationX);
-    if (!isThisActive || isLoading || !seekBarWidth.current) return;
+    if (isLoading || !seekBarWidth.current) return;
     const locationX = e.nativeEvent.locationX;
     const fraction = Math.max(0, Math.min(1, locationX / seekBarWidth.current));
     console.log('[AudioBubble] seek fraction:', fraction);
     handleSeek(fraction);
-  }, [isThisActive, isLoading, handleSeek]);
+  }, [isLoading, handleSeek]);
 
   return (
     <View style={[styles.bubble, isUser && styles.bubbleUser]} testID={`audio-bubble-${messageId}`}>
@@ -422,7 +422,7 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
       </View>
 
       {/* Full-width seekable progress bar */}
-      {isThisActive && (
+      {!isLoading && !isUser && (
         <TouchableOpacity
           activeOpacity={1}
           onPress={handleSeekBarTap}
