@@ -193,6 +193,20 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
   const isThisActive = ((isThisPlaying || isThisPaused) && currentMessageId === messageId) || isSeeking;
   const progress = isThisActive ? Math.min(1, localElapsed / Math.max(1, totalDuration)) : 0;
 
+  // Waveform + seekbar overlay — seekbar sits on top of the waveform, centered vertically
+  const waveformWithSeek = (
+    <View style={styles.waveformSeekContainer}>
+      {isLoading && !isUser
+        ? <ThinkingDots colors={colors} />
+        : <WaveformBars data={waveformData} colors={colors} progress={progress} />}
+      {!isLoading && (
+        <View style={styles.seekOverlay}>
+          <SeekBar displayProgress={progress} colors={colors} styles={styles} onSeek={handleSeek} />
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <View style={[styles.bubble, isUser && styles.bubbleUser]} testID={`audio-bubble-${messageId}`}>
       <View style={styles.playRow}>
@@ -200,24 +214,18 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
           <>
             <SpeedChip styles={styles} />
             <DurationText isLoading={isLoading} totalDuration={totalDuration} styles={styles} />
-            <WaveformBars data={waveformData} colors={colors} progress={progress} />
+            {waveformWithSeek}
             <PlayButton isLoading={isLoading} isThisLoading={isThisLoading} isThisPlaying={isThisPlaying} onPlayPause={handlePlayPause} colors={colors} styles={styles} />
           </>
         ) : (
           <>
             <PlayButton isLoading={isLoading} isThisLoading={isThisLoading} isThisPlaying={isThisPlaying} onPlayPause={handlePlayPause} colors={colors} styles={styles} />
-            {isLoading
-              ? <ThinkingDots colors={colors} />
-              : <WaveformBars data={waveformData} colors={colors} progress={progress} />}
+            {waveformWithSeek}
             <DurationText isLoading={isLoading} totalDuration={totalDuration} styles={styles} />
             <SpeedChip styles={styles} />
           </>
         )}
       </View>
-
-      {!isLoading && !isUser && (
-        <SeekBar displayProgress={progress} colors={colors} styles={styles} onSeek={handleSeek} />
-      )}
 
       <TranscriptSection transcript={transcript} colors={colors} styles={styles} />
     </View>
@@ -275,10 +283,20 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     ...TYPOGRAPHY.metaSmall,
     color: colors.textSecondary,
   },
+  waveformSeekContainer: {
+    flex: 1,
+    position: 'relative' as const,
+  },
+  seekOverlay: {
+    position: 'absolute' as const,
+    top: 0,
+    left: -4,
+    right: -4,
+    bottom: 0,
+    justifyContent: 'center' as const,
+  },
   seekSlider: {
-    height: 20,
-    marginHorizontal: -SPACING.xs,
-    marginTop: -SPACING.xs,
+    height: 40,
   },
   transcriptToggle: {
     flexDirection: 'row' as const,

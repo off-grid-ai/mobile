@@ -171,8 +171,8 @@ export const SeekBar: React.FC<{
       value={isSeeking ? seekValue : displayProgress}
       minimumValue={0}
       maximumValue={1}
-      minimumTrackTintColor={colors.primary}
-      maximumTrackTintColor={`${colors.primary}20`}
+      minimumTrackTintColor="transparent"
+      maximumTrackTintColor="transparent"
       thumbTintColor={colors.primary}
       onSlidingStart={(val) => { setIsSeeking(true); setSeekValue(val); }}
       onValueChange={(val) => { if (isSeeking) setSeekValue(val); }}
