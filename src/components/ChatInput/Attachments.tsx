@@ -30,7 +30,9 @@ const notifyPickerState = () => {
 const subscribePickerState = (listener: (request: ActivePickerRequest | null) => void) => {
   pickerStateListeners.add(listener);
   listener(globalPickerRequest);
-  return () => pickerStateListeners.delete(listener);
+  return () => {
+    pickerStateListeners.delete(listener);
+  };
 };
 
 const startPickerWatchdog = (request: ActivePickerRequest) => {
