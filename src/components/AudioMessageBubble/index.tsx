@@ -290,6 +290,7 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     flex: 1,
     position: 'relative' as const,
     marginLeft: SPACING.sm,
+    marginRight: -SPACING.md,
   },
   seekOverlay: {
     position: 'absolute' as const,
