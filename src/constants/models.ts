@@ -91,6 +91,27 @@ export const RECOMMENDED_MODELS = [
     type: 'text' as const,
     org: 'mistralai',
   },
+  // --- Low-RAM only (≤ 6 GB) ---
+  {
+    id: 'ggml-org/SmolVLM2-500M-Video-Instruct-GGUF',
+    name: 'SmolVLM2 500M',
+    params: 0.5,
+    description: 'Tiny vision + video model for constrained devices',
+    minRam: 3,
+    maxRam: 6,
+    type: 'vision' as const,
+    org: 'HuggingFaceTB',
+  },
+  {
+    id: 'QuantFactory/SmolLM2-360M-Instruct-GGUF',
+    name: 'SmolLM2 360M',
+    params: 0.36,
+    description: 'Ultra-light language model for low-RAM devices',
+    minRam: 3,
+    maxRam: 6,
+    type: 'text' as const,
+    org: 'HuggingFaceTB',
+  },
   // --- Vision ---
   {
     id: 'ggml-org/SmolVLM-Instruct-GGUF',

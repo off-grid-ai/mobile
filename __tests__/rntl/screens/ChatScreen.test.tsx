@@ -1140,7 +1140,8 @@ describe('ChatScreen', () => {
   // ============================================================================
   describe('delete conversation', () => {
     it('shows delete button in settings modal', () => {
-      setupFullChat();
+      const { conversationId } = setupFullChat();
+      mockRoute.params = { conversationId };
 
       const { getByTestId } = renderChatScreen();
       fireEvent.press(getByTestId('chat-settings-icon'));
@@ -1148,7 +1149,8 @@ describe('ChatScreen', () => {
     });
 
     it('shows confirmation alert when delete is pressed', () => {
-      setupFullChat();
+      const { conversationId } = setupFullChat();
+      mockRoute.params = { conversationId };
 
       const { getByTestId, queryByTestId } = renderChatScreen();
       fireEvent.press(getByTestId('chat-settings-icon'));
@@ -1159,7 +1161,8 @@ describe('ChatScreen', () => {
     });
 
     it('shows Cancel and Delete buttons in confirmation alert', () => {
-      setupFullChat();
+      const { conversationId } = setupFullChat();
+      mockRoute.params = { conversationId };
 
       const { getByTestId } = renderChatScreen();
       fireEvent.press(getByTestId('chat-settings-icon'));
@@ -1170,7 +1173,8 @@ describe('ChatScreen', () => {
     });
 
     it('closes alert when Cancel is pressed', () => {
-      setupFullChat();
+      const { conversationId } = setupFullChat();
+      mockRoute.params = { conversationId };
 
       const { getByTestId, queryByTestId } = renderChatScreen();
       fireEvent.press(getByTestId('chat-settings-icon'));

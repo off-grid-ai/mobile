@@ -195,6 +195,7 @@ export const useChatScreen = () => {
   useEffect(() => {
     const { conversationId } = route.params || {};
     if (conversationId) { setActiveConversation(conversationId); }
+    else { setActiveConversation(null); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params?.conversationId]);
 
