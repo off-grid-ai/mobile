@@ -44,6 +44,7 @@ const startPickerWatchdog = (request: ActivePickerRequest) => {
       source: request.source,
       durationMs: Date.now() - request.startedAt,
     });
+    resetGlobalPickerRequest('watchdog-timeout');
   }, PICKER_WATCHDOG_MS);
 };
 
