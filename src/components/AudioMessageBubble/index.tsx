@@ -210,24 +210,17 @@ export const AudioMessageBubble: React.FC<AudioMessageBubbleProps> = ({
   return (
     <View style={[styles.bubble, isUser && styles.bubbleUser]} testID={`audio-bubble-${messageId}`}>
       <View style={styles.playRow}>
-        {isUser ? (
-          <>
-            <SpeedChip styles={styles} />
-            <DurationText isLoading={isLoading} totalDuration={totalDuration} styles={styles} />
-            {waveformWithSeek}
-            <PlayButton isLoading={isLoading} isThisLoading={isThisLoading} isThisPlaying={isThisPlaying} onPlayPause={handlePlayPause} colors={colors} styles={styles} />
-          </>
-        ) : (
-          <>
-            <PlayButton isLoading={isLoading} isThisLoading={isThisLoading} isThisPlaying={isThisPlaying} onPlayPause={handlePlayPause} colors={colors} styles={styles} />
-            {waveformWithSeek}
-            <DurationText isLoading={isLoading} totalDuration={totalDuration} styles={styles} />
-            <SpeedChip styles={styles} />
-          </>
-        )}
+        <PlayButton isLoading={isLoading} isThisLoading={isThisLoading} isThisPlaying={isThisPlaying} onPlayPause={handlePlayPause} colors={colors} styles={styles} />
+        {waveformWithSeek}
       </View>
 
-      <TranscriptSection transcript={transcript} colors={colors} styles={styles} />
+      <View style={styles.metaRow}>
+        <TranscriptSection transcript={transcript} colors={colors} styles={styles} />
+        <View style={styles.metaRight}>
+          <DurationText isLoading={isLoading} totalDuration={totalDuration} styles={styles} />
+          <SpeedChip styles={styles} />
+        </View>
+      </View>
     </View>
   );
 };
@@ -250,6 +243,16 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     borderColor: `${colors.primary}40`,
   },
   playRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.sm,
+  },
+  metaRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+  },
+  metaRight: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: SPACING.sm,
