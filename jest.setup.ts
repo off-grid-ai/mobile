@@ -177,6 +177,27 @@ jest.mock('react-native-audio-api', () => ({
   FileDirectory: { Document: 0, Cache: 1 },
 }), { virtual: true });
 
+// react-native-executorch mock
+const mockVoiceConfig = { id: 'mock_voice' };
+jest.mock('react-native-executorch', () => ({
+  useTextToSpeech: jest.fn(() => ({
+    isReady: true,
+    downloadProgress: 1,
+    error: null,
+    stream: jest.fn(() => Promise.resolve()),
+    streamStop: jest.fn(),
+  })),
+  KOKORO_MEDIUM: 'kokoro-medium',
+  KOKORO_VOICE_AF_HEART: mockVoiceConfig,
+  KOKORO_VOICE_AF_RIVER: mockVoiceConfig,
+  KOKORO_VOICE_AF_SARAH: mockVoiceConfig,
+  KOKORO_VOICE_AM_ADAM: mockVoiceConfig,
+  KOKORO_VOICE_AM_MICHAEL: mockVoiceConfig,
+  KOKORO_VOICE_AM_SANTA: mockVoiceConfig,
+  KOKORO_VOICE_BF_EMMA: mockVoiceConfig,
+  KOKORO_VOICE_BM_DANIEL: mockVoiceConfig,
+}));
+
 // react-native-fs mock
 jest.mock('react-native-fs', () => ({
   DocumentDirectoryPath: '/mock/documents',

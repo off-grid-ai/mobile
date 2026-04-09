@@ -188,6 +188,7 @@ describe('TTS integration', () => {
       expect(mockTTS.speak).toHaveBeenCalledWith(
         'AI response text',
         expect.objectContaining({ voiceId: '0', speed: 1.0 }),
+        expect.any(Function),
       );
     });
   });
