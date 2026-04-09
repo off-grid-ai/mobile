@@ -11,9 +11,10 @@
  */
 
 import React from 'react';
-import { Keyboard } from 'react-native';
+import { ActionSheetIOS, Keyboard } from 'react-native';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { ChatInput } from '../../../src/components/ChatInput';
+import { __resetAttachmentPickerForTests } from '../../../src/components/ChatInput/Attachments';
 
 // Mock image picker
 jest.mock('react-native-image-picker', () => ({
@@ -93,10 +94,20 @@ describe('ChatInput', () => {
   const defaultProps = {
     onSend: jest.fn(),
   };
+  const actionSheetSelections: number[] = [];
+
+  const queueActionSheetSelection = (buttonIndex: number) => {
+    actionSheetSelections.push(buttonIndex);
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    __resetAttachmentPickerForTests();
+    actionSheetSelections.length = 0;
     jest.spyOn(Keyboard, 'dismiss');
+    jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation((_options: any, callback: any) => {
+      callback(actionSheetSelections.length > 0 ? actionSheetSelections.shift() : 2);
+    });
 
     // Set up default mock implementations
     mockUseWhisperStore.mockReturnValue({
@@ -127,12 +138,13 @@ describe('ChatInput', () => {
     fireEvent.press(fns.getByTestId('attach-button'));
   };
   const pressAttachDocument = (fns: { getByTestId: any }) => {
+    queueActionSheetSelection(1);
     openAttachPicker(fns);
-    fireEvent.press(fns.getByTestId('attach-document'));
   };
-  const pressAttachPhoto = (fns: { getByTestId: any }) => {
+  const pressAttachPhoto = (fns: { getByTestId: any }, sourceButtonIndex: number = 2) => {
+    queueActionSheetSelection(0);
+    queueActionSheetSelection(sourceButtonIndex);
     openAttachPicker(fns);
-    fireEvent.press(fns.getByTestId('attach-photo'));
   };
   const openQuickSettings = (fns: { getByTestId: any }) => {
     fireEvent.press(fns.getByTestId('quick-settings-button'));
@@ -549,10 +561,9 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      pressAttachPhoto(result);
+      pressAttachPhoto(result, 2);
 
-      // Should show the Add Image alert with camera/library options
-      expect(result.getByText('Add Image')).toBeTruthy();
+      expect(ActionSheetIOS.showActionSheetWithOptions).toHaveBeenCalled();
     });
 
     it('attach button is present when vision is supported', () => {
@@ -573,12 +584,10 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      pressAttachPhoto(result);
+      pressAttachPhoto(result, 2);
 
-      // Should show CustomAlert with camera/library options
       await waitFor(() => {
-        expect(result.getByText('Add Image')).toBeTruthy();
-        expect(result.getByText('Choose image source')).toBeTruthy();
+        expect(ActionSheetIOS.showActionSheetWithOptions).toHaveBeenCalledTimes(2);
       });
     });
 
@@ -597,14 +606,7 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      pressAttachPhoto(result);
-
-      // Wait for CustomAlert to appear and press Photo Library button
-      await waitFor(() => {
-        expect(result.getByText('Photo Library')).toBeTruthy();
-      });
-
-      fireEvent.press(result.getByText('Photo Library'));
+      pressAttachPhoto(result, 1);
 
       await waitFor(() => {
         expect(result.queryByTestId('attachments-container')).toBeTruthy();
@@ -629,13 +631,7 @@ describe('ChatInput', () => {
       );
 
       // Add attachment via attach picker → photo
-      pressAttachPhoto(result);
-
-      await waitFor(() => {
-        expect(result.getByText('Photo Library')).toBeTruthy();
-      });
-
-      fireEvent.press(result.getByText('Photo Library'));
+      pressAttachPhoto(result, 1);
 
       await waitFor(() => {
         expect(result.getByTestId('attachments-container')).toBeTruthy();
@@ -681,6 +677,51 @@ describe('ChatInput', () => {
       await waitFor(() => {
         expect(mockPick).toHaveBeenCalled();
         expect(result.queryByTestId('attachments-container')).toBeTruthy();
+      });
+    });
+
+    it('serializes document picker requests while one is still in progress', async () => {
+      let resolvePick: ((value: any) => void) | undefined;
+      mockPick.mockImplementation(() => new Promise((resolve) => {
+        resolvePick = resolve;
+      }));
+
+      const result = render(
+        <ChatInput {...defaultProps} />
+      );
+
+      pressAttachDocument(result);
+
+      await waitFor(() => {
+        expect(mockPick).toHaveBeenCalledTimes(1);
+      });
+
+      expect(result.getByTestId('attach-button').props.accessibilityState?.disabled).toBe(true);
+
+      fireEvent.press(result.getByTestId('attach-button'));
+      expect(mockPick).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolvePick?.([{
+          uri: 'file:///mock/document.txt',
+          name: 'document.txt',
+          type: 'text/plain',
+          size: 1234,
+        }]);
+      });
+
+      await waitFor(() => {
+        expect(result.getByTestId('attachments-container')).toBeTruthy();
+      });
+
+      await waitFor(() => {
+        expect(result.getByTestId('attach-button').props.accessibilityState?.disabled).toBe(false);
+      });
+
+      pressAttachDocument(result);
+
+      await waitFor(() => {
+        expect(mockPick).toHaveBeenCalledTimes(2);
       });
     });
 
@@ -932,14 +973,7 @@ describe('ChatInput', () => {
       );
 
       // Add attachment via attach picker
-      pressAttachPhoto({ getByTestId });
-
-      // Wait for CustomAlert and press Photo Library
-      await waitFor(() => {
-        expect(getByText('Photo Library')).toBeTruthy();
-      });
-
-      fireEvent.press(getByText('Photo Library'));
+      pressAttachPhoto({ getByTestId }, 1);
 
       await waitFor(() => {
         expect(queryByTestId('attachments-container')).toBeTruthy();
@@ -1078,11 +1112,10 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      pressAttachPhoto(result);
+      pressAttachPhoto(result, 2);
 
       await waitFor(() => {
-        expect(result.getByText('Camera')).toBeTruthy();
-        expect(result.getByText('Photo Library')).toBeTruthy();
+        expect(ActionSheetIOS.showActionSheetWithOptions).toHaveBeenCalledTimes(2);
       });
     });
   });
@@ -1224,9 +1257,7 @@ describe('ChatInput', () => {
       );
 
       // Add attachment via attach picker
-      pressAttachPhoto({ getByTestId });
-      await waitFor(() => expect(getByText('Photo Library')).toBeTruthy());
-      fireEvent.press(getByText('Photo Library'));
+      pressAttachPhoto({ getByTestId }, 1);
 
       await waitFor(() => {
         expect(getByTestId('attachments-container')).toBeTruthy();
@@ -1501,15 +1532,7 @@ describe('ChatInput', () => {
       );
 
       // Open attach picker, press photo
-      pressAttachPhoto(result);
-
-      // Wait for alert
-      await waitFor(() => {
-        expect(result.getByText('Camera')).toBeTruthy();
-      });
-
-      // Press Camera option
-      fireEvent.press(result.getByText('Camera'));
+      pressAttachPhoto(result, 0);
 
       // Advance timer for the 300ms delay before pickFromCamera
       await act(async () => {
@@ -1533,13 +1556,7 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      pressAttachPhoto(result);
-
-      await waitFor(() => {
-        expect(result.getByText('Camera')).toBeTruthy();
-      });
-
-      fireEvent.press(result.getByText('Camera'));
+      pressAttachPhoto(result, 0);
 
       await act(async () => {
         jest.advanceTimersByTime(350);
@@ -1561,13 +1578,7 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      pressAttachPhoto(result);
-
-      await waitFor(() => {
-        expect(result.getByText('Camera')).toBeTruthy();
-      });
-
-      fireEvent.press(result.getByText('Camera'));
+      pressAttachPhoto(result, 0);
 
       await act(async () => {
         jest.advanceTimersByTime(350);
@@ -1587,6 +1598,47 @@ describe('ChatInput', () => {
   // Photo library error (covers line 199)
   // ============================================================================
   describe('photo library error', () => {
+    it('serializes photo library launches while one is still in progress', async () => {
+      jest.useFakeTimers();
+      const { launchImageLibrary } = require('react-native-image-picker');
+      let resolveLibrary: ((value: any) => void) | undefined;
+      launchImageLibrary.mockImplementation(() => new Promise((resolve) => {
+        resolveLibrary = resolve;
+      }));
+
+      const result = render(
+        <ChatInput {...defaultProps} supportsVision={true} />
+      );
+
+      queueActionSheetSelection(0);
+      queueActionSheetSelection(1);
+      queueActionSheetSelection(1);
+      openAttachPicker(result);
+
+      await act(async () => {
+        jest.advanceTimersByTime(350);
+      });
+
+      expect(launchImageLibrary).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolveLibrary?.({
+          assets: [{
+            uri: 'file:///selected-image.jpg',
+            type: 'image/jpeg',
+            width: 1024,
+            height: 768,
+          }],
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.getByTestId('attachments-container')).toBeTruthy();
+      });
+
+      jest.useRealTimers();
+    });
+
     it('handles photo library error gracefully', async () => {
       jest.useFakeTimers();
       const { launchImageLibrary } = require('react-native-image-picker');
@@ -1596,13 +1648,7 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      pressAttachPhoto(result);
-
-      await waitFor(() => {
-        expect(result.getByText('Photo Library')).toBeTruthy();
-      });
-
-      fireEvent.press(result.getByText('Photo Library'));
+      pressAttachPhoto(result, 1);
 
       await act(async () => {
         jest.advanceTimersByTime(350);
@@ -1738,13 +1784,7 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      pressAttachPhoto(result);
-
-      await waitFor(() => {
-        expect(result.getByText('Photo Library')).toBeTruthy();
-      });
-
-      fireEvent.press(result.getByText('Photo Library'));
+      pressAttachPhoto(result, 1);
 
       await act(async () => {
         jest.advanceTimersByTime(350);
@@ -1768,13 +1808,7 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      pressAttachPhoto(result);
-
-      await waitFor(() => {
-        expect(result.getByText('Photo Library')).toBeTruthy();
-      });
-
-      fireEvent.press(result.getByText('Photo Library'));
+      pressAttachPhoto(result, 1);
 
       await act(async () => {
         jest.advanceTimersByTime(350);

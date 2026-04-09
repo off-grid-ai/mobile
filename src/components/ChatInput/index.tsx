@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, TextInput, TouchableOpacity, Animated, StyleSheet } from 'react-native';
+import { ActionSheetIOS, Platform, View, TextInput, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useTheme, useThemedStyles } from '../../theme';
 import { ImageModeState, MediaAttachment } from '../../types';
@@ -13,6 +13,7 @@ import { AttachmentPreview, useAttachments } from './Attachments';
 import { useVoiceInput } from './Voice';
 import { QuickSettingsPopover, AttachPickerPopover } from './Popovers';
 import { useKeyboardAwarePopover } from './useKeyboardAwarePopover';
+import logger from '../../utils/logger';
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: MediaAttachment[], imageMode?: ImageModeState) => void;
@@ -67,8 +68,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [message, setMessage] = useState('');
   const [imageMode, setImageMode] = useState<ImageModeState>('auto');
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
-  const quickSettings = useKeyboardAwarePopover();
-  const attachPicker = useKeyboardAwarePopover();
+  const quickSettings = useKeyboardAwarePopover(undefined, 'quick-settings-popover');
+  const attachPicker = useKeyboardAwarePopover(undefined, 'attach-popover');
   const inputRef = useRef<TextInput>(null);
   const hasText = message.length > 0;
   const iconsAnim = useRef(new Animated.Value(0)).current;
@@ -81,7 +82,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }).start();
   }, [hasText, iconsAnim]);
 
-  const { attachments, removeAttachment, clearAttachments, handlePickImage, handlePickDocument } = useAttachments(setAlertState);
+  const { attachments, isPickerActive, removeAttachment, clearAttachments, handlePickImage, handlePickDocument } = useAttachments(setAlertState);
 
   const { isRecording, isModelLoading, isTranscribing, partialResult, error, voiceAvailable, startRecording, stopRecording, clearResult } = useVoiceInput({
     conversationId,
@@ -116,6 +117,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const handleVisionPress = () => {
+    logger.log('[ChatInput]', 'handle-vision-press', { supportsVision, isPickerActive });
     if (!supportsVision) {
       setAlertState(showAlert(
         'Vision Not Supported',
@@ -137,9 +139,36 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
-  const handleQuickSettingsPress = () => quickSettings.show();
+  const handleQuickSettingsPress = () => {
+    logger.log('[ChatInput]', 'quick-settings-pressed');
+    quickSettings.show();
+  };
 
-  const handleAttachPress = () => attachPicker.show();
+  const handleAttachPress = () => {
+    logger.log('[ChatInput]', 'attach-pressed', { disabled: !!disabled, isPickerActive, hasText });
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Photo', 'Document', 'Cancel'],
+          cancelButtonIndex: 2,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) {
+            logger.log('[ChatInput][AttachPopover]', 'photo-row-pressed');
+            handleVisionPress();
+            return;
+          }
+
+          if (buttonIndex === 1) {
+            logger.log('[ChatInput][AttachPopover]', 'document-row-pressed');
+            handlePickDocument();
+          }
+        },
+      );
+      return;
+    }
+    attachPicker.show();
+  };
 
   const actionButton = canSend ? (
     <TouchableOpacity
@@ -213,13 +242,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               testID="attach-button"
               style={styles.pillIconButton}
               onPress={handleAttachPress}
-              disabled={disabled}
+              disabled={disabled || isPickerActive}
               hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             >
               <Icon
                 name="plus"
                 size={20}
-                color={disabled ? colors.textMuted : colors.textSecondary}
+                color={disabled || isPickerActive ? colors.textMuted : colors.textSecondary}
               />
             </TouchableOpacity>
 
@@ -244,15 +273,17 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         ) : actionButton}
       </View>
 
-      <AttachPickerPopover
-        visible={attachPicker.visible}
-        onClose={attachPicker.hide}
-        anchorY={attachPicker.anchor.y}
-        anchorX={attachPicker.anchor.x}
-        supportsVision={supportsVision}
-        onPhoto={handleVisionPress}
-        onDocument={handlePickDocument}
-      />
+      {Platform.OS !== 'ios' && (
+        <AttachPickerPopover
+          visible={attachPicker.visible}
+          onClose={attachPicker.hide}
+          anchorY={attachPicker.anchor.y}
+          anchorX={attachPicker.anchor.x}
+          supportsVision={supportsVision}
+          onPhoto={handleVisionPress}
+          onDocument={handlePickDocument}
+        />
+      )}
 
       <QuickSettingsPopover
         visible={quickSettings.visible}
@@ -284,4 +315,3 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 const spotlightStyles = StyleSheet.create({
   centered: { alignSelf: 'center' },
 });
-
