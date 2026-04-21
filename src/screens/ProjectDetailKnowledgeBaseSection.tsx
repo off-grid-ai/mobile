@@ -6,6 +6,7 @@ import { pick, isErrorWithCode, errorCodes } from '@react-native-documents/picke
 import { resolvePickedFileUri } from '../utils/resolvePickedFileUri';
 import { Button } from '../components/Button';
 import { showAlert, AlertState } from '../components/CustomAlert';
+import { AddTextModal } from '../components/AddTextModal';
 import { ragService } from '../services/rag';
 import type { RagDocument } from '../services/rag';
 import { isPickerStuck } from '../utils/pickerErrorUtils';
@@ -28,6 +29,7 @@ export const KnowledgeBaseSection: React.FC<KBSectionProps> = ({ projectId, colo
   const [kbDocs, setKbDocs] = useState<RagDocument[]>([]);
   const [indexingFile, setIndexingFile] = useState<string | null>(null);
   const [isPicking, setIsPicking] = useState(false);
+  const [showTextModal, setShowTextModal] = useState(false);
   const isPickingRef = useRef(false);
 
   const loadKbDocs = useCallback(async () => {
@@ -107,6 +109,9 @@ export const KnowledgeBaseSection: React.FC<KBSectionProps> = ({ projectId, colo
           {kbDocs.length > 0 && <Text style={styles.sectionCount}>{kbDocs.length}</Text>}
         </View>
         <View style={styles.sectionActions}>
+          <Button title="Paste" variant="primary" size="small" onPress={() => setShowTextModal(true)}
+            disabled={isPicking || !!indexingFile}
+            icon={<Icon name="type" size={14} color={colors.primary} />} />
           <Button title="Add" variant="primary" size="small" onPress={handleAddDocument}
             disabled={isPicking || !!indexingFile}
             icon={<Icon name="plus" size={16} color={colors.primary} />} />
@@ -143,6 +148,12 @@ export const KnowledgeBaseSection: React.FC<KBSectionProps> = ({ projectId, colo
           ))}
         </ScrollView>
       )}
+      <AddTextModal
+        visible={showTextModal}
+        projectId={projectId}
+        onClose={() => setShowTextModal(false)}
+        onIndexed={loadKbDocs}
+      />
     </View>
   );
 };

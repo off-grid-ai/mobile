@@ -1,9 +1,12 @@
+import RNFS from 'react-native-fs';
 import { ragDatabase } from './database';
 import { chunkDocument } from './chunking';
 import { retrievalService } from './retrieval';
 import { embeddingService } from './embedding';
 import { documentService } from '../documentService';
 import logger from '../../utils/logger';
+
+export const PASTE_MAX_CHARS = 50_000;
 
 export type { Chunk, ChunkOptions } from './chunking';
 export type { RagDocument, RagSearchResult } from './database';
@@ -108,6 +111,60 @@ class RagService {
     }
 
     return total;
+  }
+
+  async indexTextContent(params: {
+    projectId: string;
+    title: string;
+    text: string;
+    onProgress?: (progress: IndexProgress) => void;
+  }): Promise<number> {
+    const { projectId, title, text, onProgress } = params;
+    await this.ensureReady();
+
+    const baseName = title.trim() || 'Note';
+    let fileName = `${baseName}.txt`;
+    const existing = ragDatabase.getDocumentsByProject(projectId);
+    if (existing.some(d => d.name === fileName)) {
+      let n = 2;
+      while (existing.some(d => d.name === `${baseName} (${n}).txt`)) n++;
+      fileName = `${baseName} (${n}).txt`;
+    }
+
+    onProgress?.({ stage: 'extracting', message: 'Saving text...' });
+    const attachmentsDir = `${RNFS.DocumentDirectoryPath}/attachments`;
+    if (!await RNFS.exists(attachmentsDir)) {
+      await RNFS.mkdir(attachmentsDir);
+    }
+    const filePath = `${attachmentsDir}/${Date.now()}_${fileName}`;
+    await RNFS.writeFile(filePath, text, 'utf8');
+
+    onProgress?.({ stage: 'chunking', message: 'Splitting into chunks...' });
+    const chunks = chunkDocument(text);
+    if (chunks.length === 0) {
+      await RNFS.unlink(filePath).catch(() => {});
+      throw new Error('Text produced no indexable content');
+    }
+
+    onProgress?.({ stage: 'indexing', message: 'Indexing chunks...' });
+    const docId = ragDatabase.insertDocument({ projectId, name: fileName, path: filePath, size: text.length });
+    const rowIds = ragDatabase.insertChunks(docId, chunks);
+
+    onProgress?.({ stage: 'embedding', message: 'Generating embeddings...' });
+    try {
+      await embeddingService.load();
+      const texts = chunks.map(c => c.content);
+      const embeddings = await embeddingService.embedBatch(texts);
+      const entries = rowIds.map((rowId, i) => ({ chunkRowid: rowId, docId, embedding: embeddings[i] }));
+      ragDatabase.insertEmbeddingsBatch(entries);
+      logger.log(`[RAG] Generated ${embeddings.length} embeddings for ${fileName}`);
+    } catch (err) {
+      logger.error('[RAG] Embedding generation failed (non-fatal):', err);
+    }
+
+    onProgress?.({ stage: 'done', message: 'Done' });
+    logger.log(`[RAG] Indexed text note "${fileName}": ${chunks.length} chunks`);
+    return docId;
   }
 
   async deleteDocument(docId: number): Promise<void> {

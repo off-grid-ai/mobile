@@ -18,11 +18,13 @@ import { resolvePickedFileUri } from '../utils/resolvePickedFileUri';
 import logger from '../utils/logger';
 import { useTheme, useThemedStyles } from '../theme';
 import { createStyles } from './KnowledgeBaseScreen.styles';
+import { SPACING } from '../constants';
 import { useProjectStore } from '../stores';
 import { ragService } from '../services/rag';
 import type { RagDocument } from '../services/rag';
 import { RootStackParamList } from '../navigation/types';
 import { isPickerStuck } from '../utils/pickerErrorUtils';
+import { AddTextModal } from '../components/AddTextModal';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteProps = RouteProp<RootStackParamList, 'KnowledgeBase'>;
@@ -44,6 +46,7 @@ export const KnowledgeBaseScreen: React.FC = () => {
   const [indexingFile, setIndexingFile] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPicking, setIsPicking] = useState(false);
+  const [showTextModal, setShowTextModal] = useState(false);
   const isPickingRef = useRef(false);
 
   const project = useProjectStore((s) => s.getProject(projectId));
@@ -183,6 +186,9 @@ export const KnowledgeBaseScreen: React.FC = () => {
             {project?.name || 'Knowledge Base'}
           </Text>
         </View>
+        <TouchableOpacity onPress={() => setShowTextModal(true)} style={styles.addButton} disabled={isPicking || !!indexingFile}>
+          <Icon name="type" size={18} color={colors.primary} />
+        </TouchableOpacity>
         <TouchableOpacity onPress={handleAddDocument} style={styles.addButton} disabled={isPicking || !!indexingFile}>
           {indexingFile ? (
             <ActivityIndicator size="small" color={colors.primary} />
@@ -208,9 +214,14 @@ export const KnowledgeBaseScreen: React.FC = () => {
           <Icon name="file-text" size={40} color={colors.textMuted} />
           <Text style={styles.emptyText}>No documents yet</Text>
           <Text style={styles.emptySubtext}>Add files to build your knowledge base</Text>
-          <TouchableOpacity style={styles.addFirstButton} onPress={handleAddDocument} disabled={isPicking}>
-            <Text style={styles.addFirstButtonText}>Add Document</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+            <TouchableOpacity style={styles.addFirstButton} onPress={handleAddDocument} disabled={isPicking}>
+              <Text style={styles.addFirstButtonText}>Add File</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.addFirstButton} onPress={() => setShowTextModal(true)} disabled={isPicking}>
+              <Text style={styles.addFirstButtonText}>Paste Text</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : (
         <FlatList
@@ -222,6 +233,12 @@ export const KnowledgeBaseScreen: React.FC = () => {
           showsVerticalScrollIndicator={false}
         />
       )}
+      <AddTextModal
+        visible={showTextModal}
+        projectId={projectId}
+        onClose={() => setShowTextModal(false)}
+        onIndexed={loadKbDocs}
+      />
     </SafeAreaView>
   );
 };
