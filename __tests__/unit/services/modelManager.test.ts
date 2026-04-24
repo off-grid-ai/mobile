@@ -246,6 +246,52 @@ describe('ModelManager', () => {
 
       await expect(modelManager.deleteModel('nonexistent')).rejects.toThrow('Model not found');
     });
+
+    it('preserves mmproj file when another model still references it', async () => {
+      const sharedMmproj = '/mock/documents/models/shared-mmproj.gguf';
+      const storedModels = [
+        {
+          id: 'qwen-vl-q4',
+          name: 'Qwen VL Q4',
+          filePath: '/mock/documents/models/qwen-vl-q4.gguf',
+          fileSize: 100,
+          mmProjPath: sharedMmproj,
+        },
+        {
+          id: 'qwen-vl-q8',
+          name: 'Qwen VL Q8',
+          filePath: '/mock/documents/models/qwen-vl-q8.gguf',
+          fileSize: 200,
+          mmProjPath: sharedMmproj,
+        },
+      ];
+      mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
+      mockedRNFS.exists.mockResolvedValue(true);
+
+      await modelManager.deleteModel('qwen-vl-q4');
+
+      expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/models/qwen-vl-q4.gguf');
+      expect(RNFS.unlink).not.toHaveBeenCalledWith(sharedMmproj);
+    });
+
+    it('deletes mmproj file when no other model references it', async () => {
+      const mmprojPath = '/mock/documents/models/solo-mmproj.gguf';
+      const storedModels = [
+        {
+          id: 'qwen-vl-q4',
+          name: 'Qwen VL Q4',
+          filePath: '/mock/documents/models/qwen-vl-q4.gguf',
+          fileSize: 100,
+          mmProjPath: mmprojPath,
+        },
+      ];
+      mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
+      mockedRNFS.exists.mockResolvedValue(true);
+
+      await modelManager.deleteModel('qwen-vl-q4');
+
+      expect(RNFS.unlink).toHaveBeenCalledWith(mmprojPath);
+    });
   });
 
   // ========================================================================

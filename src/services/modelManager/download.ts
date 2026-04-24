@@ -49,18 +49,41 @@ export async function performBackgroundDownload(opts: PerformBackgroundDownloadO
   });
 }
 
+const GGUF_MAGIC = 'GGUF';
+
+async function hasGgufMagic(path: string): Promise<boolean | null> {
+  // Returns true if GGUF magic confirmed, false if confirmed invalid, null if
+  // the read itself failed (iOS RNFS.read has a known NSInteger bridging bug;
+  // treat as inconclusive rather than invalid in that case).
+  try {
+    const header = await RNFS.read(path, 4, 0, 'ascii');
+    return header.startsWith(GGUF_MAGIC);
+  } catch {
+    return null;
+  }
+}
+
 async function checkMmProjExists(path: string | null, expectedSize?: number): Promise<boolean> {
   if (!path) return true;
   const exists = await RNFS.exists(path);
-  if (!exists || !expectedSize) return exists;
+  if (!exists) return false;
   try {
-    const stat = await RNFS.stat(path);
-    const actualSize = typeof stat.size === 'string' ? Number.parseInt(stat.size, 10) : stat.size;
-    if (actualSize < expectedSize) {
-      logger.warn(`[ModelManager] mmproj partial (${actualSize}/${expectedSize}), re-downloading`);
+    if (expectedSize) {
+      const stat = await RNFS.stat(path);
+      const actualSize = typeof stat.size === 'string' ? Number.parseInt(stat.size, 10) : stat.size;
+      if (actualSize < expectedSize) {
+        logger.warn(`[ModelManager] mmproj partial (${actualSize}/${expectedSize}), re-downloading`);
+        await RNFS.unlink(path).catch(() => {});
+        return false;
+      }
+    }
+    const magicOk = await hasGgufMagic(path);
+    if (magicOk === false) {
+      logger.warn(`[ModelManager] mmproj failed GGUF magic check, re-downloading: ${path}`);
       await RNFS.unlink(path).catch(() => {});
       return false;
     }
+    // magicOk === true or null (inconclusive): accept — llama.rn validates on load.
     return true;
   } catch {
     await RNFS.unlink(path).catch(() => {});
@@ -283,10 +306,16 @@ export function watchBackgroundDownload(opts: WatchDownloadOpts): void {
       try {
         await backgroundDownloadService.moveCompletedDownload(event.downloadId, ctx.mmProjLocalPath!);
       } catch (moveErr) {
-        const targetExists = ctx.mmProjLocalPath ? await RNFS.exists(ctx.mmProjLocalPath) : false;
-        if (!targetExists) {
-          logger.warn('[ModelManager] mmproj move failed and target not found, continuing without vision:', moveErr);
+        // Move can fail legitimately if another quant of the same family already
+        // placed a valid mmproj at this shared path. Validate the existing file
+        // (size + GGUF magic); trust it if valid, discard + downgrade if not.
+        const expectedSize = ctx.file.mmProjFile?.size;
+        const valid = await checkMmProjExists(ctx.mmProjLocalPath, expectedSize);
+        if (!valid) {
+          logger.warn('[ModelManager] mmproj move failed and target invalid, continuing without vision:', moveErr);
           ctx.mmProjLocalPath = null;
+        } else {
+          logger.log('[ModelManager] mmproj move failed but target valid (likely shared with sibling quant):', moveErr);
         }
       }
       ctx.mmProjCompleted = true;

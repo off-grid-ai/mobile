@@ -454,6 +454,104 @@ describe('Parallel mmproj download', () => {
 
       expect(metadataCallback).toHaveBeenCalledWith(42, null);
     });
+
+    it('keeps vision when mmproj move fails but target exists and is a valid GGUF', async () => {
+      const completeCbs = await setupVisionDownload();
+      const onComplete = jest.fn();
+
+      // Main move succeeds; mmproj move rejects (target already exists because
+      // a sibling quant already downloaded it).
+      mockService.moveCompletedDownload
+        .mockImplementationOnce((id: number) => {
+          if (id === 43) return Promise.reject(new Error('target exists'));
+          return Promise.resolve(`${MODELS_DIR}/vision.gguf`);
+        })
+        .mockResolvedValue(`${MODELS_DIR}/vision.gguf`);
+
+      // checkMmProjExists: file exists, size OK, GGUF magic OK
+      mockedRNFS.exists.mockResolvedValue(true);
+      mockedRNFS.stat.mockResolvedValue({ size: 500_000_000 } as any);
+      (mockedRNFS.read as jest.Mock).mockResolvedValue('GGUF');
+
+      watchBackgroundDownload({
+        downloadId: 42,
+        modelsDir: MODELS_DIR,
+        backgroundDownloadContext: bgContext,
+        backgroundDownloadMetadataCallback: metadataCallback,
+        onComplete,
+      });
+
+      await completeCbs[43]?.({ downloadId: 43, fileName: 'mmproj.gguf' });
+      await completeCbs[42]?.({ downloadId: 42, fileName: 'vision.gguf' });
+
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      const savedModel = onComplete.mock.calls[0][0];
+      expect(savedModel.mmProjPath).toBeDefined();
+    });
+
+    it('downgrades to text-only when mmproj move fails and target has bad magic bytes', async () => {
+      const completeCbs = await setupVisionDownload();
+      const onComplete = jest.fn();
+
+      mockService.moveCompletedDownload
+        .mockImplementationOnce((id: number) => {
+          if (id === 43) return Promise.reject(new Error('io error'));
+          return Promise.resolve(`${MODELS_DIR}/vision.gguf`);
+        })
+        .mockResolvedValue(`${MODELS_DIR}/vision.gguf`);
+
+      // File exists + correct size, but magic bytes wrong → invalid, unlink + downgrade
+      mockedRNFS.exists.mockResolvedValue(true);
+      mockedRNFS.stat.mockResolvedValue({ size: 500_000_000 } as any);
+      (mockedRNFS.read as jest.Mock).mockResolvedValue('XXXX');
+
+      watchBackgroundDownload({
+        downloadId: 42,
+        modelsDir: MODELS_DIR,
+        backgroundDownloadContext: bgContext,
+        backgroundDownloadMetadataCallback: metadataCallback,
+        onComplete,
+      });
+
+      await completeCbs[43]?.({ downloadId: 43, fileName: 'mmproj.gguf' });
+      await completeCbs[42]?.({ downloadId: 42, fileName: 'vision.gguf' });
+
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      const savedModel = onComplete.mock.calls[0][0];
+      expect(savedModel.mmProjPath).toBeUndefined();
+    });
+
+    it('downgrades to text-only when mmproj move fails and target does not exist', async () => {
+      const completeCbs = await setupVisionDownload();
+      const onComplete = jest.fn();
+
+      mockService.moveCompletedDownload
+        .mockImplementationOnce((id: number) => {
+          if (id === 43) return Promise.reject(new Error('io error'));
+          return Promise.resolve(`${MODELS_DIR}/vision.gguf`);
+        })
+        .mockResolvedValue(`${MODELS_DIR}/vision.gguf`);
+
+      // Target does not exist anywhere
+      mockedRNFS.exists.mockImplementation((p: any) =>
+        Promise.resolve(!String(p).includes('mmproj')),
+      );
+
+      watchBackgroundDownload({
+        downloadId: 42,
+        modelsDir: MODELS_DIR,
+        backgroundDownloadContext: bgContext,
+        backgroundDownloadMetadataCallback: metadataCallback,
+        onComplete,
+      });
+
+      await completeCbs[43]?.({ downloadId: 43, fileName: 'mmproj.gguf' });
+      await completeCbs[42]?.({ downloadId: 42, fileName: 'vision.gguf' });
+
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      const savedModel = onComplete.mock.calls[0][0];
+      expect(savedModel.mmProjPath).toBeUndefined();
+    });
   });
 
   // ========================================================================
