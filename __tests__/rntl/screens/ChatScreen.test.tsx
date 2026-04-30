@@ -461,6 +461,7 @@ const renderChatScreen = () => {
 describe('ChatScreen', () => {
   afterEach(() => {
     cleanup();
+    jest.useRealTimers();
   });
 
   beforeEach(() => {
@@ -3687,10 +3688,9 @@ describe('ChatScreen', () => {
       await act(async () => { fireEvent.press(getByTestId('chat-settings-icon')); });
       await act(async () => { fireEvent.press(getByTestId('delete-conversation-btn')); });
       await act(async () => { fireEvent.press(getByTestId('alert-button-Delete')); });
-      await act(async () => { await new Promise<void>(r => setTimeout(() => r(), 200)); });
-
-      // llmService.stopGeneration should have been called (was streaming)
-      expect(llmService.stopGeneration).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(llmService.stopGeneration).toHaveBeenCalled();
+      });
     });
   });
 
@@ -3733,10 +3733,9 @@ describe('ChatScreen', () => {
       await act(async () => {
         fireEvent.press(getByTestId('send-with-image'));
       });
-      await act(async () => { await new Promise<void>(r => setTimeout(() => r(), 300)); });
-
-      // The test exercises handleImageGeneration failure path - no crash
-      expect(getByTestId('chat-screen')).toBeTruthy();
+      await waitFor(() => {
+        expect(getByTestId('chat-screen')).toBeTruthy();
+      });
     });
   });
 
@@ -3785,6 +3784,7 @@ describe('ChatScreen', () => {
       });
 
       // Queue count should appear and clear queue button
+      await waitFor(() => expect(getByTestId('clear-queue-button')).toBeTruthy());
       const clearQueueBtn = getByTestId('clear-queue-button');
       await act(async () => {
         fireEvent.press(clearQueueBtn);

@@ -76,7 +76,7 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
                 val downloadId = System.currentTimeMillis()
                 val destination = File(
                     reactApplicationContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                    fileName,
+                    "${downloadId}_${fileName}",
                 ).absolutePath
 
                 val entity = DownloadEntity(
@@ -265,6 +265,12 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
                 }
 
                 if (!sourceFile.exists()) {
+                    val targetFile = File(targetPath)
+                    if (targetFile.exists()) {
+                        withContext(Dispatchers.IO) { downloadDao.deleteDownload(d) }
+                        SafePromise(promise, NAME).resolve(targetPath)
+                        return@launch
+                    }
                     SafePromise(promise, NAME).reject("MOVE_ERROR", "Downloaded file not found: ${sourceFile.absolutePath}")
                     return@launch
                 }

@@ -17,12 +17,10 @@ import logger from '../../utils/logger';
 import { getUserFacingDownloadMessage } from '../../utils/downloadErrors';
 
 export interface UseDownloadManagerResult {
-  isRefreshing: boolean;
   activeItems: DownloadItem[];
   completedItems: DownloadItem[];
   alertState: AlertState;
   setAlertState: (state: AlertState) => void;
-  handleRefresh: () => Promise<void>;
   handleRemoveDownload: (item: DownloadItem) => void;
   handleRetryDownload: (item: DownloadItem) => void;
   handleDeleteItem: (item: DownloadItem) => void;
@@ -196,7 +194,6 @@ function syncDownloadSnapshot(
 }
 
 export function useDownloadManager(): UseDownloadManagerResult {
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeDownloads, setActiveDownloads] = useState<BackgroundDownloadInfo[]>([]);
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
   const cancelledKeysRef = useRef<Set<string>>(new Set());
@@ -209,7 +206,6 @@ export function useDownloadManager(): UseDownloadManagerResult {
     activeBackgroundDownloads,
     setBackgroundDownload,
     downloadedImageModels,
-    setDownloadedImageModels,
     removeDownloadedImageModel,
     removeImageModelDownloading,
   } = useAppStore();
@@ -309,16 +305,6 @@ export function useDownloadManager(): UseDownloadManagerResult {
 
   }, [loadActiveDownloads, setDownloadProgress]);
 
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await loadActiveDownloads();
-    const models = await modelManager.getDownloadedModels();
-    setDownloadedModels(models);
-    const imageModels = await modelManager.getDownloadedImageModels();
-    setDownloadedImageModels(imageModels);
-    setIsRefreshing(false);
-
-  }, [loadActiveDownloads, setDownloadedModels, setDownloadedImageModels]);
 
   const executeRemoveDownload = async (item: DownloadItem) => {
     setAlertState(hideAlert());
@@ -554,12 +540,10 @@ export function useDownloadManager(): UseDownloadManagerResult {
   const totalStorageUsed = completedItems.reduce((sum, item) => sum + item.fileSize, 0);
 
   return {
-    isRefreshing,
     activeItems,
     completedItems,
     alertState,
     setAlertState,
-    handleRefresh,
     handleRemoveDownload,
     handleRetryDownload,
     handleDeleteItem,

@@ -117,6 +117,7 @@ async function restoreDownloadEntry(opts: RestoreEntryOpts): Promise<void> {
   const reportProgress = () => {
     const combinedDownloaded = mainBytesDownloaded + mmProjBytesDownloaded;
     onProgress?.({
+      downloadId: download.downloadId,
       modelId: metadata.modelId, fileName: metadata.fileName,
       bytesDownloaded: combinedDownloaded, totalBytes: combinedTotalBytes,
       progress: combinedTotalBytes > 0 ? combinedDownloaded / combinedTotalBytes : 0,

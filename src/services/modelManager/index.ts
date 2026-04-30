@@ -124,8 +124,13 @@ class ModelManager {
       throw new Error('Invalid mmproj path: outside app directory');
     }
     await RNFS.unlink(model.filePath);
-    if (model.mmProjPath) await RNFS.unlink(model.mmProjPath).catch(() => {});
-    await saveModelsList(models.filter(m => m.id !== modelId));
+    const remaining = models.filter(m => m.id !== modelId);
+    // mmproj files are shared across quantizations of the same family. Only
+    // delete when no other model still references this path.
+    if (model.mmProjPath && !remaining.some(m => m.mmProjPath === model.mmProjPath)) {
+      await RNFS.unlink(model.mmProjPath).catch(() => {});
+    }
+    await saveModelsList(remaining);
   }
 
   async getModelPath(modelId: string): Promise<string | null> {
@@ -309,7 +314,14 @@ class ModelManager {
     await new Promise<void>((resolve, reject) => {
       const removeProgress = backgroundDownloadService.onProgress(info.downloadId, (event) => {
         if (event.status === 'retrying' || event.status === 'waiting_for_network') return;
-        opts?.onProgress?.({ modelId, fileName: file.mmProjFile!.name, bytesDownloaded: event.bytesDownloaded, totalBytes, progress: totalBytes > 0 ? event.bytesDownloaded / totalBytes : 0 });
+        opts?.onProgress?.({
+          downloadId: info.downloadId,
+          modelId,
+          fileName: file.mmProjFile!.name,
+          bytesDownloaded: event.bytesDownloaded,
+          totalBytes,
+          progress: totalBytes > 0 ? event.bytesDownloaded / totalBytes : 0,
+        });
       });
       const removeComplete = backgroundDownloadService.onComplete(info.downloadId, async (event) => {
         removeProgress(); removeComplete(); removeError();

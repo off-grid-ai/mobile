@@ -150,35 +150,26 @@ class HuggingFaceService {
       return undefined;
     }
 
-    // modelQuant intentionally unused; matching is done via modelLower below
-    const modelLower = modelFileName.toLowerCase();
+    const toResult = (f: { path: string; size?: number; lfs?: { size: number } }) => ({
+      name: f.path,
+      size: f.lfs?.size || f.size || 0,
+      downloadUrl: this.getDownloadUrl(modelId, f.path),
+    });
 
-    // Try to match by quantization level
-    for (const mmProj of mmProjFiles) {
-      const mmProjQuant = this.extractQuantization(mmProj.path);
-      // Match exact quantization or if model uses the mmproj's quantization variant
-      if (mmProjQuant !== 'Unknown' && modelLower.includes(mmProjQuant.toLowerCase())) {
-        return {
-          name: mmProj.path,
-          size: mmProj.lfs?.size || mmProj.size || 0,
-          downloadUrl: this.getDownloadUrl(modelId, mmProj.path),
-        };
-      }
+    // Exact symmetric match: model quant === mmproj quant
+    const modelQuant = this.extractQuantization(modelFileName);
+    if (modelQuant !== 'Unknown') {
+      const exactMatch = mmProjFiles.find(f => this.extractQuantization(f.path) === modelQuant);
+      if (exactMatch) return toResult(exactMatch);
     }
 
-    // Fallback: prefer f16 mmproj if available, otherwise use the first one
-    // Match F16/FP16 but exclude BF16 — BF16 mmproj can be incompatible with some runtimes
-    const f16MMProj = mmProjFiles.find(f => {
+    // Fallback: prefer F16/FP16, exclude BF16 (can be incompatible with some runtimes)
+    const f16 = mmProjFiles.find(f => {
       const lower = f.path.toLowerCase();
       return (lower.includes('f16') || lower.includes('fp16')) && !lower.includes('bf16');
     });
 
-    const selectedMMProj = f16MMProj || mmProjFiles[0];
-    return {
-      name: selectedMMProj.path,
-      size: selectedMMProj.lfs?.size || selectedMMProj.size || 0,
-      downloadUrl: this.getDownloadUrl(modelId, selectedMMProj.path),
-    };
+    return toResult(f16 ?? mmProjFiles[0]);
   }
 
   private detectModelType(name: string, tags: string[]): string {

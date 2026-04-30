@@ -1664,12 +1664,12 @@ describe('ModelsScreen', () => {
     it('filters search results by size', async () => {
       mockSearchModels.mockResolvedValue([
         createModelInfo({
-          id: 'test/small-1B',
+          id: 'test/model-1B',
           name: 'Small 1B',
           files: [createModelFile({ size: 1000000000 })],
         }),
         createModelInfo({
-          id: 'test/large-70B',
+          id: 'test/model-70B',
           name: 'Large 70B',
           files: [createModelFile({ size: 4000000000 })],
         }),
@@ -1691,14 +1691,11 @@ describe('ModelsScreen', () => {
         fireEvent.press(getByText('1-3B'));
       });
 
-      // Search
-      await act(async () => {
-        fireEvent.changeText(getByTestId('search-input'), 'test');
-      });
-
+      // Size filters auto-trigger search even with an empty query.
       await waitFor(() => {
         expect(getByText('Small 1B')).toBeTruthy();
       });
+      expect(mockSearchModels).toHaveBeenCalled();
       // Large 70B doesn't match 1-3B size filter
       expect(queryByText('Large 70B')).toBeNull();
     });

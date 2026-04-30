@@ -80,6 +80,7 @@ export interface PersistedDownloadInfo {
 }
 
 export interface DownloadProgress {
+  downloadId?: number;
   modelId: string;
   fileName: string;
   bytesDownloaded: number;

@@ -244,6 +244,7 @@ describe('restoreInProgressDownloads', () => {
     });
 
     expect(onProgress).toHaveBeenCalledWith({
+      downloadId: 42,
       modelId: 'test/model',
       fileName: 'model.gguf',
       bytesDownloaded: 2_000_000_000,

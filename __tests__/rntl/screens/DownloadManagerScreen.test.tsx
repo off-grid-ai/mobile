@@ -825,27 +825,6 @@ describe('DownloadManagerScreen', () => {
     expect(mockModelManager.getActiveBackgroundDownloads).toHaveBeenCalled();
   });
 
-  it('handleRefresh reloads models and image models', async () => {
-    const setDownloadedModels = jest.fn();
-    const setDownloadedImageModels = jest.fn();
-    const state = createDefaultState({ setDownloadedModels, setDownloadedImageModels });
-    mockStoreState(state);
-
-    const { UNSAFE_root } = render(<DownloadManagerScreen />);
-
-    // Find the FlatList and trigger its RefreshControl onRefresh
-    const flatList = UNSAFE_root.findAll((node: any) => node.type && node.type.displayName === 'FlatList')[0]
-      || UNSAFE_root.findAll((node: any) => node.props?.refreshControl)[0];
-
-    if (flatList && flatList.props.refreshControl) {
-      await act(async () => {
-        flatList.props.refreshControl.props.onRefresh();
-      });
-    }
-
-    expect(mockModelManager.getDownloadedModels).toHaveBeenCalled();
-    expect(mockModelManager.getDownloadedImageModels).toHaveBeenCalled();
-  });
 
   it('confirming delete model calls deleteModel and removeDownloadedModel', async () => {
     const removeDownloadedModel = jest.fn();

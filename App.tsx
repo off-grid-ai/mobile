@@ -139,6 +139,7 @@ function App() {
               progress: progress.progress,
               bytesDownloaded: progress.bytesDownloaded,
               totalBytes: progress.totalBytes,
+              ownerDownloadId: progress.downloadId,
             });
           },
         );

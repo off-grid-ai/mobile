@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
@@ -15,12 +15,10 @@ export const DownloadManagerScreen: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const {
-    isRefreshing,
     activeItems,
     completedItems,
     alertState,
     setAlertState,
-    handleRefresh,
     handleRemoveDownload,
     handleRetryDownload,
     handleDeleteItem,
@@ -104,13 +102,6 @@ export const DownloadManagerScreen: React.FC = () => {
           </View>
         )}
         keyExtractor={item => item.key}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.primary}
-          />
-        }
         contentContainerStyle={styles.listContent}
       />
 
