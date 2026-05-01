@@ -1,0 +1,19 @@
+Off Grid is a fully on-device AI assistant. Large language models run directly on your phone via llama.cpp and GGUF — no cloud, no account, no telemetry. Airplane-mode tested.
+
+Capabilities:
+
+* Chat with Llama 3.2, Qwen 3, Gemma 3, Phi-4, DeepSeek R1, and Mistral. Streaming responses, markdown rendering, "thinking mode" for reasoning models.
+
+* Voice input via on-device whisper.cpp. Hold to record, auto-transcribe. Audio never leaves your phone.
+
+* Vision — point your camera and ask. Supports SmolVLM, Qwen-VL, Gemma 3n.
+
+* Document analysis. Attach PDFs, code, CSVs. Native PDF text extraction. No cloud parsing.
+
+* Tool calling. Models that support function calling can use built-in tools — web search, calculator, date/time, knowledge-base search.
+
+* Project knowledge bases. Upload PDFs and notes. Documents are chunked and embedded on-device with a bundled MiniLM model, retrieved via cosine similarity, all stored in local SQLite.
+
+* Bring-your-own model. Sideload any GGUF file.
+
+Built on llama.cpp, whisper.cpp, llama.rn, and whisper.rn — all standard FOSS components. MIT-licensed.
