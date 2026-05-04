@@ -1,8 +1,16 @@
 diff --git a/node_modules/react-native-zip-archive/android/src/main/java/com/rnziparchive/RNZipArchiveModule.java b/node_modules/react-native-zip-archive/android/src/main/java/com/rnziparchive/RNZipArchiveModule.java
-index 14bd68f..e381579 100644
+index 14bd68f..bfae10e 100644
 --- a/node_modules/react-native-zip-archive/android/src/main/java/com/rnziparchive/RNZipArchiveModule.java
 +++ b/node_modules/react-native-zip-archive/android/src/main/java/com/rnziparchive/RNZipArchiveModule.java
-@@ -174,7 +174,12 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
+@@ -44,6 +44,7 @@ import java.nio.charset.Charset;
+ 
+ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
+   private static final String TAG = RNZipArchiveModule.class.getSimpleName();
++  private static final String ERROR_CODE = "RNZipArchiveError";
+ 
+   private static final String PROGRESS_EVENT_NAME = "zipArchiveProgressEvent";
+   private static final String EVENT_KEY_FILENAME = "filePath";
+@@ -174,7 +175,12 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
            }
          } catch (Exception ex) {
            updateProgress(0, 1, zipFilePath); // force 0%
@@ -16,34 +24,34 @@ index 14bd68f..e381579 100644
          }
        }
      }).start();
-@@ -342,7 +347,7 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
+@@ -342,7 +348,7 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
        processZip(filesOrDirectory, destFile, parameters, promise, password.toCharArray());
  
      } catch (Exception ex) {
 -      promise.reject("RNZipArchiveError", ex.getMessage());
-+      promise.reject("RNZipArchiveError", ex.getMessage() != null ? ex.getMessage() : "unknown error");
++      safeReject(promise, ERROR_CODE, ex.getMessage() != null ? ex.getMessage() : "unknown error", ex);
        return;
      }
    }
-@@ -356,7 +361,7 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
+@@ -356,7 +362,7 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
        processZip(filesOrDirectory, destFile, parameters, promise, null);
  
      } catch (Exception ex) {
 -      promise.reject("RNZipArchiveError", ex.getMessage());
-+      promise.reject("RNZipArchiveError", ex.getMessage() != null ? ex.getMessage() : "unknown error");
++      safeReject(promise, ERROR_CODE, ex.getMessage() != null ? ex.getMessage() : "unknown error", ex);
        return;
      }
    }
-@@ -413,7 +418,7 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
+@@ -413,7 +419,7 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
            }
            promise.resolve(destFile);
          } catch (Exception ex) {
 -          promise.reject("RNZipArchiveError", ex.getMessage());
-+          promise.reject("RNZipArchiveError", ex.getMessage() != null ? ex.getMessage() : "unknown error");
++          safeReject(promise, ERROR_CODE, ex.getMessage() != null ? ex.getMessage() : "unknown error", ex);
            return;
          }
        }
-@@ -470,7 +475,7 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
+@@ -470,7 +476,7 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
    }
  
    private static CompressionLevel getCompressionLevel(double compressionLevel) {
@@ -52,7 +60,7 @@ index 14bd68f..e381579 100644
        case -1:
          return CompressionLevel.NORMAL;
        case 0:
-@@ -499,6 +504,16 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
+@@ -499,6 +505,16 @@ public class RNZipArchiveModule extends ReactContextBaseJavaModule {
      }
    }
  
