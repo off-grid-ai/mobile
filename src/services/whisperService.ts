@@ -51,7 +51,7 @@ class WhisperService {
         url: model.url,
         fileName,
         modelId: `whisper-${modelId}`,
-        totalBytes: model.size * 1024 * 1024,
+        totalBytes: 0,
       },
       destPath,
       onProgress: onProgress
