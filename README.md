@@ -34,7 +34,8 @@ Off Grid is built by [**Wednesday Solutions**](https://mobile.wednesday.is/). We
   <tr>
     <td><img src="src/assets/stat-4x.svg" alt="4x faster to ship" width="200" /></td>
     <td><img src="src/assets/stat-2x.svg" alt="2x fewer crashes" width="200" /></td>
-    <td><img src="src/assets/stat-10x.svg" alt="10x more work, same cost" width="200" /></td>
+    <td><img src="src/assets/stat-10x.svg" alt="10x more output, same cost" width="200" /></td>
+    <td><img src="src/assets/stat-100.svg" alt="100% money-back if we miss the claims" width="200" /></td>
   </tr>
 </table>
 
