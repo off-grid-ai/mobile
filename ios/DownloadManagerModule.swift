@@ -558,8 +558,11 @@ extension DownloadManagerModule {
     let modelType = (params["modelType"] as? String) ?? "text"
     let combinedTotalBytes = (params["combinedTotalBytes"] as? NSNumber)?.int64Value ?? 0
     let metadataJson = params["metadataJson"] as? String
-    let downloadId = String(nextDownloadId)
-    nextDownloadId += 1
+    let downloadId = queue.sync(flags: .barrier) { () -> String in
+      let id = String(nextDownloadId)
+      nextDownloadId += 1
+      return id
+    }
 
     NSLog("[DownloadManager] Starting download #%@: url=%@, fileName=%@, modelId=%@, totalBytes=%lld, modelType=%@",
           downloadId, urlString, fileName, modelId, totalBytes, modelType)
@@ -631,8 +634,11 @@ extension DownloadManagerModule {
     }
 
     let totalBytes = (params["totalBytes"] as? NSNumber)?.int64Value ?? 0
-    let downloadId = String(nextDownloadId)
-    nextDownloadId += 1
+    let downloadId = queue.sync(flags: .barrier) { () -> String in
+      let id = String(nextDownloadId)
+      nextDownloadId += 1
+      return id
+    }
 
     NSLog("[DownloadManager] Starting multi-file download #%@: %d files, totalBytes=%lld, dest=%@",
           downloadId, filesArray.count, totalBytes, destinationDir)
@@ -691,7 +697,7 @@ extension DownloadManagerModule {
       status: "running",
       startedAt: Date().timeIntervalSince1970 * 1000,
       modelKey: params["modelKey"] as? String,
-      modelType: (params["modelType"] as? String) ?? "image",
+      modelType: (params["modelType"] as? String) ?? "text",
       combinedTotalBytes: (params["combinedTotalBytes"] as? NSNumber)?.int64Value ?? 0,
       metadataJson: params["metadataJson"] as? String,
       task: nil,
@@ -770,7 +776,8 @@ extension DownloadManagerModule {
           "totalBytes": NSNumber(value: info.totalBytes),
           "startedAt": NSNumber(value: info.startedAt),
           "modelType": info.modelType,
-          "combinedTotalBytes": NSNumber(value: info.combinedTotalBytes)
+          "combinedTotalBytes": NSNumber(value: info.combinedTotalBytes),
+          "createdAt": NSNumber(value: info.startedAt)
         ]
         if let modelKey = info.modelKey { entry["modelKey"] = modelKey }
         if let metadataJson = info.metadataJson { entry["metadataJson"] = metadataJson }
