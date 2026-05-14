@@ -100,9 +100,9 @@ class ImageGenerationService {
   }
 
   private _checkSharePrompt(): void {
-    if (useAppStore.getState().hasEngagedSharePrompt) return;
-    const count = useAppStore.getState().incrementImageGenerationCount();
-    if (shouldShowSharePrompt(count)) setTimeout(() => emitSharePrompt('image'), SHARE_PROMPT_DELAY_MS);
+    const s = useAppStore.getState();
+    const count = s.incrementImageGenerationCount();
+    if (!s.hasEngagedSharePrompt && shouldShowSharePrompt(count)) setTimeout(() => emitSharePrompt('image'), SHARE_PROMPT_DELAY_MS);
     checkProPromptForImage(SHARE_PROMPT_DELAY_MS);
   }
 

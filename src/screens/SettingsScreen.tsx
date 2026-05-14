@@ -234,7 +234,7 @@ export const SettingsScreen: React.FC = () => {
         </AnimatedEntry>
 
         {/* About */}
-        <AnimatedEntry index={7} staggerMs={40} trigger={focusTrigger}>
+        <AnimatedEntry index={8} staggerMs={40} trigger={focusTrigger}>
           <View style={styles.navSection}>
             <TouchableOpacity style={[styles.navItem, styles.navItemLast]} onPress={() => navigation.navigate('About')}>
               <View style={styles.navItemIcon}>
@@ -250,7 +250,7 @@ export const SettingsScreen: React.FC = () => {
         </AnimatedEntry>
 
         {/* Privacy */}
-        <AnimatedEntry index={8} staggerMs={40} trigger={focusTrigger}>
+        <AnimatedEntry index={9} staggerMs={40} trigger={focusTrigger}>
           <Card style={styles.privacyCard}>
             <View style={styles.privacyIconContainer}>
               <Icon name="shield" size={18} color={colors.textSecondary} />
@@ -264,7 +264,7 @@ export const SettingsScreen: React.FC = () => {
         </AnimatedEntry>
 
         {/* Reset Onboarding */}
-        <AnimatedEntry index={9} staggerMs={40} trigger={focusTrigger}>
+        <AnimatedEntry index={10} staggerMs={40} trigger={focusTrigger}>
           <View style={styles.devButtonGroup}>
             <TouchableOpacity style={styles.devButton} onPress={handleResetOnboarding}>
               <Icon name="rotate-ccw" size={14} color={colors.textMuted} />
