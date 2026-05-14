@@ -230,12 +230,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
     setIsEditing(false);
   };
 
-  const handleLongPress = () => {
-    if (!showActions || isStreaming) return;
-    triggerHaptic('impactMedium');
-    setShowActionMenu(true);
-  };
-
   const handleGenerateImage = () => {
     const source = isUser ? message.content : parsedContent.response;
     onGenerateImage?.(source.trim().slice(0, 500));
@@ -252,15 +246,12 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       onToggle={() => setShowThinking(!showThinking)} styles={styles} colors={colors} />;
   }
   const messageBody = (
-    <TouchableOpacity
+    <View
       testID={isUser ? 'user-message' : 'assistant-message'}
       style={[
         styles.container,
         isUser ? styles.userContainer : styles.assistantContainer,
       ]}
-      activeOpacity={0.8}
-      onLongPress={handleLongPress}
-      delayLongPress={300}
     >
       <View style={bubbleStyle}>
         {hasAttachments && (
@@ -296,24 +287,22 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       {showGenerationDetails && !isUser && message.generationMeta && (
         <GenerationMeta generationMeta={message.generationMeta} styles={styles} />
       )}
-    </TouchableOpacity>
+    </View>
   );
 
   return (
     <>
       {animateEntry ? <AnimatedEntry index={0}>{messageBody}</AnimatedEntry> : messageBody}
-
       <ActionMenuSheet
         visible={showActionMenu}
         onClose={() => setShowActionMenu(false)}
         isUser={isUser}
         canEdit={!!onEdit}
-        canRetry={!!onRetry}
         canGenerateImage={canGenerateImage && !!onGenerateImage}
         styles={styles}
         onCopy={handleCopy}
         onEdit={handleEdit}
-        onRetry={handleRetry}
+        onRetry={onRetry ? handleRetry : undefined}
         onGenerateImage={handleGenerateImage}
       />
       <EditSheet

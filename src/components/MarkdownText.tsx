@@ -1,35 +1,103 @@
-import React, { useCallback, useMemo } from 'react';
-import { Linking, Pressable, Text, StyleSheet } from 'react-native';
-import Markdown from '@ronradtke/react-native-markdown-display';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Clipboard, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { EnrichedMarkdownText } from 'react-native-enriched-markdown';
+import Icon from 'react-native-vector-icons/Feather';
 import { useTheme } from '../theme';
 import type { ThemeColors } from '../theme';
-import { TYPOGRAPHY, SPACING, FONTS } from '../constants';
+import { FONTS, SPACING, TYPOGRAPHY } from '../constants';
+import logger from '../utils/logger';
 
-/**
- * Escape asterisks used as multiplication operators (digit*digit) so
- * markdown-it doesn't treat them as emphasis markers.
- * Lookahead handles chains like 5*5*5*5 in a single pass.
- */
 export function preprocessMarkdown(text: string): string {
   return text.replaceAll(/(\d)\*(?=\d)/g, String.raw`$1\*`);
 }
 
-const linkWrapperStyles = StyleSheet.create({
-  pressable: { flexShrink: 1, paddingBottom: 6 },
+function CodeBlock({ language, code, colors }: { language: string; code: string; colors: ThemeColors }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    Clipboard.setString(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [code]);
+
+  return (
+    <View style={[codeBlockStyles.container, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
+      <View style={[codeBlockStyles.header, { borderBottomColor: colors.borderLight }]}>
+        <Text style={[codeBlockStyles.lang, { color: colors.textMuted }]}>{language}</Text>
+        <Pressable onPress={handleCopy} style={codeBlockStyles.copyBtn} hitSlop={8}>
+          <Icon name={copied ? 'check' : 'copy'} size={13} color={copied ? colors.primary : colors.textMuted} />
+          <Text style={[codeBlockStyles.copyLabel, { color: copied ? colors.primary : colors.textMuted }]}>
+            {copied ? 'Copied' : 'Copy'}
+          </Text>
+        </Pressable>
+      </View>
+      <Text selectable style={[codeBlockStyles.code, { color: colors.text, fontFamily: FONTS.mono }]}>
+        {code}
+      </Text>
+    </View>
+  );
+}
+
+const codeBlockStyles = StyleSheet.create({
+  container: {
+    borderRadius: 6,
+    borderWidth: 1,
+    marginVertical: SPACING.sm,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  lang: {
+    fontSize: 11,
+    fontFamily: FONTS.mono,
+    textTransform: 'uppercase',
+  },
+  copyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  copyLabel: {
+    fontSize: 11,
+  },
+  code: {
+    fontSize: 12,
+    lineHeight: 18,
+    padding: SPACING.md,
+  },
 });
 
-/** Custom link rule that constrains the Pressable wrapper width */
-function createLinkRule(onPress: (url: string) => void) {
-  return (node: any, renderChildren: any, _parent: any) => (
-    <Pressable
-      key={node.key}
-      accessibilityRole="link"
-      style={linkWrapperStyles.pressable}
-      onPress={() => onPress(node.attributes?.href ?? '')}
-    >
-      <Text>{renderChildren}</Text>
-    </Pressable>
-  );
+type Segment =
+  | { type: 'markdown'; content: string }
+  | { type: 'code'; language: string; code: string };
+
+function splitSegments(text: string): Segment[] {
+  const segments: Segment[] = [];
+  const fence = /^```([^\n]*)\n([\s\S]*?)^```/gm;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = fence.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      const md = text.slice(lastIndex, match.index).trim();
+      if (md) segments.push({ type: 'markdown', content: md });
+    }
+    segments.push({ type: 'code', language: match[1].trim(), code: match[2] });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    const md = text.slice(lastIndex).trim();
+    if (md) segments.push({ type: 'markdown', content: md });
+  }
+
+  return segments;
 }
 
 interface MarkdownTextProps {
@@ -39,162 +107,139 @@ interface MarkdownTextProps {
 
 export function MarkdownText({ children, dimmed }: MarkdownTextProps) {
   const { colors } = useTheme();
-  const markdownStyles = useMemo(
-    () => createMarkdownStyles(colors, dimmed),
-    [colors, dimmed],
-  );
 
-  const handleLinkPress = useCallback((url: string) => {
-    Linking.openURL(url);
-    return false;
+  const markdownStyle = useMemo(() => createMarkdownStyle(colors, dimmed), [colors, dimmed]);
+
+  const segments = useMemo(() => splitSegments(preprocessMarkdown(children)), [children]);
+
+  const handleLinkPress = useCallback((event: { url: string }) => {
+    logger.log(`[MarkdownText] link pressed: ${event.url}`);
+    Linking.openURL(event.url);
   }, []);
 
-  const processed = useMemo(() => preprocessMarkdown(children), [children]);
-  const rules = useMemo(() => ({ link: createLinkRule(handleLinkPress) }), [handleLinkPress]);
-
   return (
-    <Markdown style={markdownStyles} onLinkPress={handleLinkPress} rules={rules}>
-      {processed}
-    </Markdown>
+    <View>
+      {segments.map((seg, i) =>
+        seg.type === 'code' ? (
+          <CodeBlock key={i} language={seg.language} code={seg.code} colors={colors} />
+        ) : (
+          <EnrichedMarkdownText
+            key={i}
+            markdown={seg.content}
+            markdownStyle={markdownStyle}
+            selectable
+            onLinkPress={handleLinkPress}
+          />
+        )
+      )}
+    </View>
   );
 }
 
-function createMarkdownStyles(colors: ThemeColors, dimmed?: boolean) {
+function createMarkdownStyle(colors: ThemeColors, dimmed?: boolean) {
   const textColor = dimmed ? colors.textSecondary : colors.text;
 
   return {
-    body: {
-      ...TYPOGRAPHY.body,
+    paragraph: {
+      fontSize: TYPOGRAPHY.body.fontSize,
+      fontFamily: TYPOGRAPHY.body.fontFamily,
       color: textColor,
       lineHeight: 20,
-      flexShrink: 1,
+      marginBottom: SPACING.sm,
     },
-    heading1: {
-      ...TYPOGRAPHY.h2,
-      fontWeight: '600' as const,
+    h1: {
+      fontSize: 20,
+      fontFamily: FONTS.mono,
       color: textColor,
       marginTop: SPACING.sm,
       marginBottom: SPACING.xs,
     },
-    heading2: {
-      ...TYPOGRAPHY.h2,
+    h2: {
+      fontSize: TYPOGRAPHY.h2.fontSize,
+      fontFamily: FONTS.mono,
       color: textColor,
       marginTop: SPACING.sm,
       marginBottom: SPACING.xs,
     },
-    heading3: {
-      ...TYPOGRAPHY.h3,
-      fontWeight: '600' as const,
+    h3: {
+      fontSize: TYPOGRAPHY.h3.fontSize,
+      fontFamily: FONTS.mono,
       color: textColor,
       marginTop: SPACING.xs,
       marginBottom: 2,
     },
-    heading4: {
-      ...TYPOGRAPHY.h3,
+    h4: {
+      fontSize: TYPOGRAPHY.h3.fontSize,
+      fontFamily: FONTS.mono,
+      color: textColor,
+      marginTop: SPACING.xs,
+      marginBottom: 2,
+    },
+    h5: {
+      fontSize: 12,
+      fontFamily: FONTS.mono,
+      color: textColor,
+      marginTop: SPACING.xs,
+      marginBottom: 2,
+    },
+    h6: {
+      fontSize: 11,
+      fontFamily: FONTS.mono,
       color: textColor,
       marginTop: SPACING.xs,
       marginBottom: 2,
     },
     strong: {
-      fontWeight: '700' as const,
+      fontWeight: 'bold' as const,
     },
     em: {
       fontStyle: 'italic' as const,
     },
-    s: {
-      textDecorationLine: 'line-through' as const,
-    },
-    code_inline: {
+    code: {
       fontFamily: FONTS.mono,
       fontSize: 13,
-      backgroundColor: colors.surfaceLight,
       color: colors.primary,
-      paddingHorizontal: 4,
-      paddingVertical: 1,
-      borderRadius: 3,
-      // Override default border
-      borderWidth: 0,
+      backgroundColor: colors.surfaceLight,
     },
-    fence: {
+    codeBlock: {
       fontFamily: FONTS.mono,
       fontSize: 12,
-      backgroundColor: colors.surfaceLight,
       color: textColor,
+      backgroundColor: colors.surfaceLight,
+      borderColor: colors.border,
+      borderWidth: 1,
       borderRadius: 6,
       padding: SPACING.md,
-      marginVertical: SPACING.sm,
-      borderWidth: 0,
-    },
-    code_block: {
-      fontFamily: FONTS.mono,
-      fontSize: 12,
-      backgroundColor: colors.surfaceLight,
-      color: textColor,
-      borderRadius: 6,
-      padding: SPACING.md,
-      marginVertical: SPACING.sm,
-      borderWidth: 0,
+      marginBottom: SPACING.sm,
     },
     blockquote: {
-      borderLeftWidth: 3,
-      borderLeftColor: colors.primary,
-      paddingLeft: SPACING.md,
-      marginLeft: 0,
-      marginVertical: SPACING.sm,
+      borderColor: colors.primary,
+      borderWidth: 3,
       backgroundColor: colors.surfaceLight,
-      borderRadius: 0,
-      paddingVertical: SPACING.xs,
+      marginBottom: SPACING.sm,
     },
-    bullet_list: {
-      marginVertical: SPACING.xs,
-    },
-    ordered_list: {
-      marginVertical: SPACING.xs,
-    },
-    list_item: {
-      marginVertical: 4,
-    },
-    // Tables
-    table: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 4,
-      marginVertical: SPACING.sm,
-    },
-    thead: {
-      backgroundColor: colors.surfaceLight,
-    },
-    th: {
-      padding: SPACING.sm,
-      borderWidth: 0.5,
-      borderColor: colors.border,
-      fontWeight: '600' as const,
-    },
-    td: {
-      padding: SPACING.sm,
-      borderWidth: 0.5,
-      borderColor: colors.border,
-    },
-    tr: {
-      borderBottomWidth: 0.5,
-      borderColor: colors.border,
-    },
-    hr: {
-      backgroundColor: colors.border,
-      height: 1,
-      marginVertical: SPACING.md,
+    list: {
+      fontSize: TYPOGRAPHY.body.fontSize,
+      fontFamily: TYPOGRAPHY.body.fontFamily,
+      color: textColor,
+      lineHeight: 20,
+      marginBottom: SPACING.xs,
     },
     link: {
       color: colors.primary,
-      textDecorationLine: 'underline' as const,
+      underline: true,
     },
-    paragraph: {
-      marginTop: 0,
+    thematicBreak: {
+      color: colors.border,
+      height: 1,
+      marginTop: SPACING.md,
+      marginBottom: SPACING.md,
+    },
+    table: {
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 4,
       marginBottom: SPACING.sm,
-    },
-    // Image (unlikely in LLM text but handle gracefully)
-    image: {
-      borderRadius: 6,
     },
   };
 }

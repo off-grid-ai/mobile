@@ -10,12 +10,11 @@ interface ActionMenuSheetProps {
   onClose: () => void;
   isUser: boolean;
   canEdit: boolean;
-  canRetry: boolean;
   canGenerateImage: boolean;
   styles: any;
   onCopy: () => void;
   onEdit: () => void;
-  onRetry: () => void;
+  onRetry?: () => void;
   onGenerateImage: () => void;
 }
 
@@ -24,7 +23,6 @@ export function ActionMenuSheet({
   onClose,
   isUser,
   canEdit,
-  canRetry,
   canGenerateImage,
   styles,
   onCopy,
@@ -64,7 +62,7 @@ export function ActionMenuSheet({
           </AnimatedPressable>
         )}
 
-        {canRetry && (
+        {!!onRetry && (
           <AnimatedPressable
             testID="action-retry"
             hapticType="selection"

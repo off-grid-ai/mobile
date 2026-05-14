@@ -16,6 +16,7 @@ import { MessageRenderer } from './MessageRenderer';
 import { NoModelScreen, LoadingScreen, ChatHeader } from './ChatScreenComponents';
 import { ChatModalSection } from './ChatModalSection';
 import { ChatMessageArea } from './ChatMessageArea';
+import { DebugLogsScreen } from '../../components/DebugLogsScreen';
 
 function countConversationImages(conv: Conversation | undefined): number {
   return (conv?.messages || []).reduce((n: number, m: Message) =>
@@ -31,6 +32,7 @@ export const ChatScreen: React.FC = () => {
   const pendingNextRef = useRef<number | null>(null);
 
   const [sharePromptVisible, setSharePromptVisible] = useState(false);
+  const [showDebugLogs, setShowDebugLogs] = useState(false);
   useEffect(() => subscribeSharePrompt(() => setSharePromptVisible(true)), []);
   // Only ONE AttachStep mounted at a time to avoid waypoint dots/lines.
   // chatSpotlight controls which index is active (3, 12, 15, or 16).
@@ -184,6 +186,7 @@ export const ChatScreen: React.FC = () => {
           setShowModelSelector={chat.setShowModelSelector}
           setShowSettingsPanel={chat.setShowSettingsPanel}
           setShowProjectSelector={chat.setShowProjectSelector}
+          setShowDebugLogs={setShowDebugLogs}
           isRemote={chat.activeModelInfo?.isRemote}
         />
         <ChatMessageArea
@@ -227,6 +230,7 @@ export const ChatScreen: React.FC = () => {
       </KeyboardAvoidingView>
       {alertEl}
       <SharePromptSheet visible={sharePromptVisible} onClose={() => setSharePromptVisible(false)} />
+      {showDebugLogs && <DebugLogsScreen visible={showDebugLogs} onClose={() => setShowDebugLogs(false)} />}
     </SafeAreaView>
   );
 };
