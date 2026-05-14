@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text } from 'react-native';
 import { ThinkingIndicator } from '../../ThinkingIndicator';
 import { MarkdownText } from '../../MarkdownText';
 import { BlinkingCursor } from './BlinkingCursor';
 import { ThinkingBlock } from './ThinkingBlock';
 import type { ParsedContent } from '../types';
+import logger from '../../../utils/logger';
 
 interface MessageContentProps {
   isUser: boolean;
@@ -27,6 +28,12 @@ export function MessageContent({
   onToggleThinking,
   styles,
 }: Readonly<MessageContentProps>) {
+  useEffect(() => {
+    logger.log(
+      `[Structure] MessageContent mounted — role=${isUser ? 'user' : 'assistant'} isThinking=${isThinking} isStreaming=${isStreaming} contentLen=${content?.length ?? 0} hasThinking=${!!parsedContent.thinking} hasResponse=${!!parsedContent.response}`
+    );
+  }, []);
+
   if (isThinking) {
     return (
       <View testID="thinking-indicator">
@@ -71,7 +78,17 @@ export function MessageContent({
             );
           }
           return (
-            <View testID="message-text">
+            <View
+              testID="message-text"
+              onStartShouldSetResponder={() => {
+                logger.log('[Touch] assistant bubble View — onStartShouldSetResponder fired (returning false so children can claim)');
+                return false;
+              }}
+              onMoveShouldSetResponder={() => {
+                logger.log('[Touch] assistant bubble View — onMoveShouldSetResponder fired');
+                return false;
+              }}
+            >
               <MarkdownText>{parsedContent.response}</MarkdownText>
               {isStreaming && <BlinkingCursor />}
             </View>

@@ -43,6 +43,7 @@
     "react": "19.2.0",
     "react-native": "0.83.1",
     "react-native-device-info": "^15.0.1",
+    "react-native-enriched-markdown": "^0.5.0",
     "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "^2.30.0",
     "react-native-haptic-feedback": "^2.3.3",
