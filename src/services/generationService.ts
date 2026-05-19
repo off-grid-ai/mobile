@@ -1,5 +1,6 @@
 /** GenerationService - Handles LLM generation independently of UI lifecycle */
 import { llmService } from './llm';
+import { liteRTService } from './litert';
 import { useAppStore, useChatStore, useRemoteServerStore } from '../stores';
 import { Message, GenerationMeta, MediaAttachment } from '../types';
 import { runToolLoop } from './generationToolLoop';
@@ -205,8 +206,9 @@ class GenerationService {
   /** Stop the current generation. Returns partial content if any was generated. */
   async stopGeneration(): Promise<string> {
     if (!this.state.isGenerating) {
-      // Stop both local and remote
+      // Stop all engines and remote
       await llmService.stopGeneration().catch(() => { });
+      await liteRTService.stopGeneration().catch(() => { });
       const provider = this.getCurrentProvider();
       if (provider) provider.stopGeneration().catch(() => { });
       if (this.currentRemoteAbortController) {
@@ -252,9 +254,17 @@ class GenerationService {
     // Stop the native completion after we've already updated UI state,
     // so the user sees immediate feedback. Store the promise so new
     // generations can drain it before starting.
-    this.pendingStop = llmService.stopGeneration().catch(() => { }).finally(() => {
-      this.pendingStop = null;
-    });
+    const { downloadedModels, activeModelId } = useAppStore.getState();
+    const activeModel = downloadedModels.find((m: any) => m.id === activeModelId);
+    if (activeModel?.engine === 'litert') {
+      this.pendingStop = liteRTService.stopGeneration().catch(() => { }).finally(() => {
+        this.pendingStop = null;
+      });
+    } else {
+      this.pendingStop = llmService.stopGeneration().catch(() => { }).finally(() => {
+        this.pendingStop = null;
+      });
+    }
 
     return streamingContent;
   }

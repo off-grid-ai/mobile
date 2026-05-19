@@ -24,10 +24,25 @@ const EVENT_ERROR    = 'litert_error';
 
 export type LiteRTBackend = 'cpu' | 'gpu' | 'npu';
 
+export interface LiteRTBenchmarkStats {
+  ttft: number;
+  decodeTokensPerSecond: number;
+  prefillTokensPerSecond: number;
+  prefillTokenCount: number;
+}
+
+export interface LiteRTMemoryInfo {
+  totalRamMb: number;
+  usedRamMb: number;
+  availRamMb: number;
+  gpuPrivateMb: number;
+  lowMemory: boolean;
+}
+
 export interface LiteRTGenerationCallbacks {
   onToken: (token: string) => void;
   onReasoning: (token: string) => void;
-  onComplete: (fullContent: string, fullReasoning: string) => void;
+  onComplete: (fullContent: string, fullReasoning: string, stats?: LiteRTBenchmarkStats) => void;
   onError: (error: Error) => void;
 }
 
@@ -41,6 +56,10 @@ class LiteRTService {
   private currentContent = '';
   private currentReasoning = '';
   private currentCallbacks: LiteRTGenerationCallbacks | null = null;
+
+  // Multi-turn tracking — reset conversation only when context changes
+  private activeConversationId: string | null = null;
+  private activeSystemPrompt: string | null = null;
 
   constructor() {
     if (Platform.OS === 'android' && LiteRTModule) {
@@ -79,13 +98,42 @@ class LiteRTService {
   // resetConversation — cheap: closes + recreates Conversation, Engine stays
   // ---------------------------------------------------------------------------
 
-  async resetConversation(systemPrompt: string): Promise<void> {
+  async resetConversation(
+    systemPrompt: string,
+    samplerConfig?: { temperature?: number; topK?: number; topP?: number },
+  ): Promise<void> {
     if (!this.isAvailable() || !this.loaded) {
       throw new Error('No LiteRT model loaded');
     }
-    logger.log(TAG, `resetConversation — systemPrompt length=${systemPrompt.length}`);
-    await LiteRTModule.resetConversation(systemPrompt);
+    const temperature = samplerConfig?.temperature ?? 0.8;
+    const topK = samplerConfig?.topK ?? 40;
+    const topP = samplerConfig?.topP ?? 0.95;
+    logger.log(TAG, `resetConversation — systemPrompt length=${systemPrompt.length} temperature=${temperature} topK=${topK} topP=${topP}`);
+    await LiteRTModule.resetConversation(systemPrompt, temperature, topK, topP);
+    this.activeSystemPrompt = systemPrompt;
     logger.log(TAG, 'resetConversation — done');
+  }
+
+  /**
+   * Ensure conversation is ready for the given context.
+   * Resets only when conversationId or systemPrompt has changed — preserves
+   * native turn history for follow-up messages in the same conversation.
+   */
+  async prepareConversation(
+    conversationId: string,
+    systemPrompt: string,
+    samplerConfig?: { temperature?: number; topK?: number; topP?: number },
+  ): Promise<void> {
+    const needsReset =
+      this.activeConversationId !== conversationId ||
+      this.activeSystemPrompt !== systemPrompt;
+    if (needsReset) {
+      logger.log(TAG, `prepareConversation — reset (convId changed=${this.activeConversationId !== conversationId}, sysPrompt changed=${this.activeSystemPrompt !== systemPrompt})`);
+      await this.resetConversation(systemPrompt, samplerConfig);
+      this.activeConversationId = conversationId;
+    } else {
+      logger.log(TAG, 'prepareConversation — reusing existing conversation (multi-turn)');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -120,11 +168,15 @@ class LiteRTService {
         this.currentReasoning += token;
         callbacks.onReasoning(token);
       }),
-      this.emitter!.addListener(EVENT_COMPLETE, () => {
+      this.emitter!.addListener(EVENT_COMPLETE, (benchmarkJson: string) => {
         logger.log(TAG, `sendMessage — complete, content=${this.currentContent.length} chars`);
         this.clearSubscriptions();
         this.currentCallbacks = null;
-        callbacks.onComplete(this.currentContent, this.currentReasoning);
+        let stats: LiteRTBenchmarkStats | undefined;
+        if (benchmarkJson) {
+          try { stats = JSON.parse(benchmarkJson); } catch { /* ignore parse errors */ }
+        }
+        callbacks.onComplete(this.currentContent, this.currentReasoning, stats);
       }),
       this.emitter!.addListener(EVENT_ERROR, (message: string) => {
         logger.log(TAG, `sendMessage — error: ${message}`);
@@ -154,6 +206,8 @@ class LiteRTService {
     logger.log(TAG, 'stopGeneration');
     this.clearSubscriptions();
     this.currentCallbacks = null;
+    // After a stop the native conversation state is indeterminate — force reset on next turn
+    this.activeConversationId = null;
     try {
       await LiteRTModule.stopGeneration();
     } catch (e) {
@@ -170,6 +224,8 @@ class LiteRTService {
     logger.log(TAG, 'unloadModel');
     this.clearSubscriptions();
     this.currentCallbacks = null;
+    this.activeConversationId = null;
+    this.activeSystemPrompt = null;
     try {
       await LiteRTModule.unloadModel();
     } catch (e) {
@@ -198,6 +254,16 @@ class LiteRTService {
 
   isAvailable(): boolean {
     return Platform.OS === 'android' && !!LiteRTModule;
+  }
+
+  async getMemoryInfo(): Promise<LiteRTMemoryInfo | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      return await LiteRTModule.getMemoryInfo();
+    } catch (e) {
+      logger.log(TAG, `getMemoryInfo — error: ${String(e)}`);
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------

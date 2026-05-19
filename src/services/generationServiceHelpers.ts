@@ -60,13 +60,41 @@ export function buildGenerationMetaImpl(svc: any): GenerationMeta {
     };
   }
 
-  // Local provider metadata
+  const { downloadedModels, activeModelId, settings } = useAppStore.getState();
+  const modelName = downloadedModels.find((m: any) => m.id === activeModelId)?.name;
+
+  // LiteRT path — use real BenchmarkInfo stats if available, else estimate
+  if (isLiteRTActive()) {
+    const backend = liteRTService.getActiveBackend() ?? 'cpu';
+    const stats = svc.liteRTBenchmarkStats;
+    if (stats) {
+      return {
+        gpu: backend !== 'cpu',
+        gpuBackend: backend.toUpperCase(),
+        modelName,
+        tokensPerSecond: stats.decodeTokensPerSecond,
+        timeToFirstToken: stats.ttft * 1000,
+        tokenCount: stats.prefillTokenCount,
+      };
+    }
+    // Fallback estimate if BenchmarkInfo unavailable
+    const generationTime = svc.state.startTime ? (Date.now() - svc.state.startTime) / 1000 : 0;
+    const estimatedTokens = Math.ceil(svc.state.streamingContent.length / 4);
+    return {
+      gpu: backend !== 'cpu',
+      gpuBackend: backend.toUpperCase(),
+      modelName,
+      tokenCount: estimatedTokens,
+      tokensPerSecond: generationTime > 0 ? estimatedTokens / generationTime : undefined,
+    };
+  }
+
+  // llama.cpp path — real perf data from native engine
   const { gpu, gpuBackend, gpuLayers } = llmService.getGpuInfo();
   const perf = llmService.getPerformanceStats();
-  const { downloadedModels, activeModelId, settings } = useAppStore.getState();
   return {
     gpu, gpuBackend, gpuLayers,
-    modelName: downloadedModels.find((m: any) => m.id === activeModelId)?.name,
+    modelName,
     tokensPerSecond: perf.lastTokensPerSecond,
     decodeTokensPerSecond: perf.lastDecodeTokensPerSecond,
     timeToFirstToken: perf.lastTimeToFirstToken,
@@ -177,10 +205,24 @@ export async function generateResponseImpl(
     const imageUri = imageAttachment?.uri as string | undefined;
     dbg('log', `[LiteRT] generateResponse — hasImage=${!!imageUri}, systemPrompt length=${systemPrompt.length}, userText length=${typeof lastUser.content === 'string' ? lastUser.content.length : 0}`);
 
+    // Guard: image attached but model was not imported with vision support
+    if (imageUri) {
+      const { downloadedModels, activeModelId } = useAppStore.getState();
+      const activeModel = downloadedModels.find((m: any) => m.id === activeModelId);
+      if (!activeModel?.liteRTVision) {
+        dbg('warn', '[LiteRT] Image attached but model does not support vision — aborting');
+        chatStore.clearStreamingMessage();
+        svc.resetState();
+        throw new Error('This model does not support images. Import it with vision enabled, or remove the image.');
+      }
+    }
+
     try {
-      // MVP: always reset conversation before each generation (safe + correct for all flows)
-      dbg('log', '[LiteRT] resetting conversation');
-      await liteRTService.resetConversation(systemPrompt);
+      const { settings } = useAppStore.getState();
+      await liteRTService.prepareConversation(conversationId, systemPrompt, {
+        temperature: settings.temperature,
+        topP: settings.topP,
+      });
       dbg('log', `[LiteRT] sendMessage start — imageUri=${imageUri ?? 'none'}`);
 
       await liteRTService.sendMessage(
@@ -204,11 +246,12 @@ export async function generateResponseImpl(
             if (svc.abortRequested) return;
             svc.reasoningBuffer += token;
           },
-          onComplete: (_content: string, _reasoning: string) => {
+          onComplete: (_content: string, _reasoning: string, stats) => {
             if (svc.abortRequested) return;
             svc.forceFlushTokens();
+            svc.liteRTBenchmarkStats = stats;
             const generationTime = svc.state.startTime ? Date.now() - svc.state.startTime : undefined;
-            dbg('log', `[LiteRT] generation complete — ${generationTime}ms, tokens=${svc.state.streamingContent.length} chars`);
+            dbg('log', `[LiteRT] generation complete — ${generationTime}ms, tok/s=${stats?.decodeTokensPerSecond?.toFixed(1) ?? 'n/a'}`);
             chatStore.finalizeStreamingMessage(conversationId, generationTime, buildGenerationMetaImpl(svc));
             svc.checkSharePrompt();
             svc.resetState();

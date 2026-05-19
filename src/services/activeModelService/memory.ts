@@ -6,6 +6,7 @@
 import { DownloadedModel, ONNXImageModel } from '../../types';
 import { hardwareService } from '../hardware';
 import { llmService } from '../llm';
+import { liteRTService } from '../litert';
 import {
   ModelType,
   MemoryCheckResult,
@@ -66,7 +67,7 @@ export function getCurrentlyLoadedMemoryGB(
 ): number {
   let totalGB = 0;
 
-  if (ids.loadedTextModelId && llmService.isModelLoaded()) {
+  if (ids.loadedTextModelId && (llmService.isModelLoaded() || liteRTService.isModelLoaded())) {
     const textModel = lists.downloadedModels.find(m => m.id === ids.loadedTextModelId);
     if (textModel) {
       totalGB += estimateModelMemoryGB(textModel, 'text');
@@ -100,7 +101,7 @@ export function getOtherLoadedMemoryGB(
       totalGB += estimateModelMemoryGB(imageModel, 'image');
     }
   }
-  if (modelType === 'image' && ids.loadedTextModelId && llmService.isModelLoaded()) {
+  if (modelType === 'image' && ids.loadedTextModelId && (llmService.isModelLoaded() || liteRTService.isModelLoaded())) {
     const textModel = lists.downloadedModels.find(m => m.id === ids.loadedTextModelId);
     if (textModel) {
       totalGB += estimateModelMemoryGB(textModel, 'text');

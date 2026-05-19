@@ -5,6 +5,7 @@
 import { useAppStore } from '../../stores';
 import { hardwareService } from '../hardware';
 import { llmService } from '../llm';
+import { liteRTService } from '../litert';
 import { localDreamGeneratorService as onnxImageGeneratorService } from '../localDreamGenerator';
 import { ResourceUsage } from './types';
 
@@ -46,7 +47,7 @@ export interface SyncStateTarget {
 export async function syncWithNativeState(target: SyncStateTarget): Promise<void> {
   const store = useAppStore.getState();
 
-  const textModelLoaded = llmService.isModelLoaded();
+  const textModelLoaded = llmService.isModelLoaded() || liteRTService.isModelLoaded();
   if (!textModelLoaded) {
     target.setLoadedTextModelId(null);
   } else if (!target.loadedTextModelId && store.activeModelId) {
