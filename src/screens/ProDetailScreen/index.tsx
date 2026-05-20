@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
+import LinearGradient from 'react-native-linear-gradient';
 import { useTheme, useThemedStyles } from '../../theme';
 import type { ThemeColors, ThemeShadows } from '../../theme';
 import { SPACING, TYPOGRAPHY } from '../../constants';
@@ -17,7 +18,7 @@ const INTEGRATIONS = [
 
 
 export const ProDetailScreen: React.FC = () => {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const styles = useThemedStyles(createStyles);
   const setHasRegisteredPro = useAppStore((s) => s.setHasRegisteredPro);
 
@@ -63,7 +64,12 @@ export const ProDetailScreen: React.FC = () => {
         </View>
 
         {/* Promo Banner */}
-        <View style={styles.promoBanner}>
+        <LinearGradient
+          colors={['#2D4A38', '#1C2B22', '#141F19']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.promoBanner}
+        >
           <View style={styles.promoOfferRow}>
             <Icon name="star" size={13} color={colors.primary} />
             <Text style={styles.promoOfferLabel}>LIMITED TIME OFFER</Text>
@@ -72,7 +78,7 @@ export const ProDetailScreen: React.FC = () => {
           <Text style={styles.promoSubtitle}>
             Unlock all current and future integrations forever.
           </Text>
-        </View>
+        </LinearGradient>
 
         {/* Core Integrations */}
         <View style={styles.integrationsSection}>
@@ -82,7 +88,7 @@ export const ProDetailScreen: React.FC = () => {
             {INTEGRATIONS.slice(0, 2).map(item => (
               <View key={item.title} style={styles.gridCard}>
                 <View style={styles.gridIconWrap}>
-                  <Icon name={item.icon} size={20} color={colors.textSecondary} />
+                  <Icon name={item.icon} size={20} color={colors.primary} />
                 </View>
                 <Text style={styles.gridCardTitle}>{item.title}</Text>
                 <Text style={styles.gridCardDesc}>{item.desc}</Text>
@@ -94,7 +100,7 @@ export const ProDetailScreen: React.FC = () => {
             {INTEGRATIONS.slice(2, 4).map(item => (
               <View key={item.title} style={styles.gridCard}>
                 <View style={styles.gridIconWrap}>
-                  <Icon name={item.icon} size={20} color={colors.textSecondary} />
+                  <Icon name={item.icon} size={20} color={colors.primary} />
                 </View>
                 <Text style={styles.gridCardTitle}>{item.title}</Text>
                 <Text style={styles.gridCardDesc}>{item.desc}</Text>
@@ -103,7 +109,12 @@ export const ProDetailScreen: React.FC = () => {
           </View>
 
           {/* MCP Access full-width */}
-          <View style={styles.mcpCard}>
+          <LinearGradient
+            colors={isDark ? ['#141414', '#141414', '#1A2B1E'] : ['#FFFFFF', '#FFFFFF', '#E8F5EE']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.mcpCard}
+          >
             <View style={styles.mcpIconWrap}>
               <Icon name="cpu" size={20} color={colors.primary} />
             </View>
@@ -118,7 +129,7 @@ export const ProDetailScreen: React.FC = () => {
                 Full Model Context Protocol support for bespoke tool chaining and logic loops.
               </Text>
             </View>
-          </View>
+          </LinearGradient>
         </View>
 
         {/* CTA */}
@@ -211,7 +222,6 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
   promoBanner: {
     marginHorizontal: SPACING.xl,
     marginBottom: SPACING.xl,
-    backgroundColor: '#1C2B22',
     borderRadius: 16,
     padding: SPACING.xl,
     alignItems: 'center' as const,
@@ -290,11 +300,11 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
   // MCP Card
   mcpCard: {
     flexDirection: 'row' as const,
-    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: SPACING.lg,
     gap: SPACING.md,
     alignItems: 'flex-start' as const,
+    overflow: 'hidden' as const,
     ...shadows.small,
   },
   mcpIconWrap: {

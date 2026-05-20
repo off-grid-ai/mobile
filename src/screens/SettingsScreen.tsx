@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
+import IconMC from 'react-native-vector-icons/MaterialCommunityIcons';
+import LinearGradient from 'react-native-linear-gradient';
 import { AttachStep } from 'react-native-spotlight-tour';
 import { useNavigation, CommonActions, CompositeNavigationProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -39,7 +41,7 @@ type NavigationProp = CompositeNavigationProp<
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const focusTrigger = useFocusTrigger();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const styles = useThemedStyles(createStyles);
   const setOnboardingComplete = useAppStore((s) => s.setOnboardingComplete);
   const themeMode = useAppStore((s) => s.themeMode);
@@ -118,7 +120,12 @@ export const SettingsScreen: React.FC = () => {
         {/* PRO Banner */}
         {showProBanner && (
           <AnimatedEntry index={0} staggerMs={40} trigger={focusTrigger}>
-            <View style={styles.proCard}>
+            <LinearGradient
+                colors={isDark ? ['#141414', '#141414', '#1A2B1E'] : ['#FFFFFF', '#FFFFFF', '#E8F5EE']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.proCard}
+              >
               <View style={styles.proCardHeader}>
                 <View style={styles.proCardHeaderText}>
                   <Text style={styles.proTitle}>Off Grid PRO</Text>
@@ -133,7 +140,7 @@ export const SettingsScreen: React.FC = () => {
               <View style={styles.proFeatureGrid}>
                 {[
                   { icon: 'mic', label: 'VOICE' },
-                  { icon: 'star', label: 'MCPS' },
+                  { icon: 'star', label: 'MCPs' },
                   { icon: 'calendar', label: 'CALENDAR' },
                   { icon: 'message-square', label: 'MESSAGING' },
                 ].map(f => (
@@ -152,7 +159,7 @@ export const SettingsScreen: React.FC = () => {
               >
                 <Text style={styles.proCtaText}>I am in 🔥</Text>
               </TouchableOpacity>
-            </View>
+            </LinearGradient>
           </AnimatedEntry>
         )}
 
@@ -226,7 +233,7 @@ export const SettingsScreen: React.FC = () => {
             activeOpacity={0.75}
           >
             <View style={styles.proIconContainer}>
-              <Icon name="zap" size={18} color={colors.primary} />
+              <IconMC name="crown" size={18} color={colors.primary} />
             </View>
             <View style={styles.proCardText}>
               <View style={styles.proTitleRow}>
@@ -389,10 +396,11 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
   devButtonGroup: { gap: 12 },
   devButtonText: { ...TYPOGRAPHY.bodySmall, color: colors.textMuted },
   proCard: {
-    backgroundColor: colors.surface,
     borderRadius: 12,
     marginBottom: SPACING.lg,
     overflow: 'hidden' as const,
+    borderWidth: 1,
+    borderColor: `${colors.primary}40`,
     ...shadows.small,
   },
   proCardText: { flex: 1 },
@@ -402,7 +410,7 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     gap: SPACING.sm,
     marginBottom: 2,
   },
-  proTitle: { ...TYPOGRAPHY.h1, color: colors.primary, marginBottom: SPACING.xs },
+  proTitle: { ...TYPOGRAPHY.h1, color: colors.primary, marginBottom: SPACING.xs, fontWeight: '700' as const },
   proBadge: {
     backgroundColor: colors.primary,
     borderRadius: 20,
@@ -456,6 +464,7 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     ...TYPOGRAPHY.label,
     color: colors.text,
     letterSpacing: 0.5,
+    fontWeight: '500' as const,
   },
   proCtaButton: {
     margin: SPACING.lg,

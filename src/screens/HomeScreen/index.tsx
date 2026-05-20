@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, CustomAlert, hideAlert } from '../../components';
 import { AnimatedEntry } from '../../components/AnimatedEntry';
@@ -9,6 +9,7 @@ import { PulsatingIcon } from '../../components/onboarding/PulsatingIcon';
 import { useOnboardingSheet } from '../../components/onboarding/useOnboardingSheet';
 import { useFocusTrigger } from '../../hooks/useFocusTrigger';
 import Icon from 'react-native-vector-icons/Feather';
+import IconMC from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTheme } from '../../theme';
 import { createStyles } from './styles';
 import { useHomeScreen, HomeScreenNavigationProp } from './hooks/useHomeScreen';
@@ -77,8 +78,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       <View testID="home-screen" style={styles.scrollView}>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.title}>Off Grid</Text>
-            {showIcon && <PulsatingIcon onPress={openSheet} />}
+            <View style={styles.headerLeft}>
+              <Text style={styles.title}>Off Grid</Text>
+              {showIcon && <PulsatingIcon onPress={openSheet} />}
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('ProDetail')} hitSlop={8} style={styles.crownButton}>
+              <IconMC name="crown" size={16} color={colors.primary} />
+            </TouchableOpacity>
           </View>
 
           {/* Active Models Section */}

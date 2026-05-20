@@ -15,7 +15,22 @@ const createLayoutStyles = (colors: ThemeColors) => ({
   header: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
     marginBottom: 20,
+  },
+  headerLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+  },
+  crownButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   title: {
     ...TYPOGRAPHY.h2,
