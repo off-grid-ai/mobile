@@ -232,9 +232,10 @@ export const useChatScreen = () => {
   // Check if there are pending settings that require model reload
   const hasPendingSettings = (() => {
     if (!loadedSettings) return false;
-    // LiteRT only reloads when the inference backend changes (cpu/gpu/npu)
+    // LiteRT reloads when backend or context length changes — both are baked into the engine at load time
     if (activeModel?.engine === 'litert') {
-      return settings.inferenceBackend !== loadedSettings.inferenceBackend;
+      return settings.inferenceBackend !== loadedSettings.inferenceBackend ||
+             settings.contextLength !== loadedSettings.contextLength;
     }
     return (
       settings.nThreads !== loadedSettings.nThreads ||

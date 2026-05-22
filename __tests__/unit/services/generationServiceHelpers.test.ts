@@ -3,7 +3,7 @@
  * Focuses on vision guard and buildGenerationMetaImpl LiteRT branches.
  */
 
-import { buildGenerationMetaImpl, FLUSH_INTERVAL_MS } from '../../../src/services/generationServiceHelpers';
+import { buildGenerationMetaImpl, FLUSH_INTERVAL_MS as _FLUSH_INTERVAL_MS } from '../../../src/services/generationServiceHelpers';
 
 jest.mock('../../../src/services/llm', () => ({
   llmService: {

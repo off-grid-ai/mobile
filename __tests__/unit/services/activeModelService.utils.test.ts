@@ -38,7 +38,7 @@ jest.mock('../../../src/services/hardware', () => ({
 
 import { llmService } from '../../../src/services/llm';
 import { liteRTService } from '../../../src/services/litert';
-import { useAppStore } from '../../../src/stores';
+import { useAppStore as _useAppStore } from '../../../src/stores';
 
 const mockedLlm = llmService as jest.Mocked<typeof llmService>;
 const mockedLiteRT = liteRTService as jest.Mocked<typeof liteRTService>;

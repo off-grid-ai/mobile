@@ -152,7 +152,6 @@ describe('safeCompletion', () => {
     const mockContext = { clearCache: jest.fn().mockResolvedValue(undefined) };
     await expect(
       safeCompletion(mockContext as any, async () => {
-        // eslint-disable-next-line @typescript-eslint/no-throw-literal
         throw 'tensor error string';
       }),
     ).rejects.toThrow('Model inference failed (native error)');

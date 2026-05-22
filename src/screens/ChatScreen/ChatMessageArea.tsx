@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { View, FlatList, Text, Keyboard, ActivityIndicator, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -6,6 +6,7 @@ import { AttachStep } from 'react-native-spotlight-tour';
 import { ChatInput, ToolPickerSheet, ThinkingIndicator } from '../../components';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { generationService } from '../../services';
+import { liteRTService } from '../../services/litert';
 import { EmptyChat, ImageProgressIndicator } from './ChatScreenComponents';
 import { getPlaceholderText, useChatScreen } from './useChatScreen';
 import { createStyles } from './styles';
@@ -30,6 +31,16 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
 }) => {
   const tabNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [inputHeight, setInputHeight] = useState(84);
+  const [contextUsage, setContextUsage] = useState<{ used: number; max: number } | undefined>(undefined);
+  const isStreaming = chat.isStreaming || chat.isThinking;
+  const prevIsStreamingRef = useRef(isStreaming);
+  useEffect(() => {
+    if (prevIsStreamingRef.current && !isStreaming) {
+      const usage = liteRTService.getContextUsage();
+      setContextUsage(usage.used > 0 && usage.max > 0 ? usage : undefined);
+    }
+    prevIsStreamingRef.current = isStreaming;
+  }, [isStreaming]);
   const activeModelRepoId = chat.activeModelId?.split('/').slice(0, 2).join('/');
   const handleRepairVision = activeModelRepoId
     ? () => tabNav.navigate('DownloadManager')
@@ -133,6 +144,7 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
             supportsThinking={chat.supportsThinking}
             onRepairVision={handleRepairVision}
             activeSpotlight={chatSpotlight === 12 ? chatSpotlight : null}
+            contextUsage={contextUsage}
           />
         </AttachStep>
       </View>
