@@ -341,7 +341,7 @@ export function useChatModelStateSync(deps: ModelStateSyncDeps): void {
       setSupportsThinking(activeRemoteModel?.capabilities?.supportsThinking ?? false);
     } else if (activeModel?.engine === 'litert' && liteRTService.isModelLoaded()) {
       setSupportsToolCalling(true);
-      setSupportsThinking(false);
+      setSupportsThinking(true);
     } else if (llmService.isModelLoaded()) {
       setSupportsToolCalling(llmService.supportsToolCalling());
       setSupportsThinking(llmService.supportsThinking());
