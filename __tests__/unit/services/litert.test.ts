@@ -19,7 +19,10 @@ const mockEmitter = { addListener: mockAddListener };
 jest.mock('react-native', () => ({
   NativeModules: { LiteRTModule: mockLiteRTModule },
   NativeEventEmitter: jest.fn(() => mockEmitter),
-  Platform: { OS: 'android' },
+  Platform: {
+    OS: 'android',
+    select: (spec: Record<string, any>) => spec.android ?? spec.default ?? null,
+  },
 }));
 
 jest.mock('../../../src/utils/logger', () => {
@@ -106,6 +109,7 @@ describe('LiteRTService', () => {
       (liteRTService as any).loaded = true;
       (liteRTService as any).activeConversationId = 'conv-1';
       (liteRTService as any).activeSystemPrompt = 'You are helpful.';
+      (liteRTService as any).activeToolsJson = '';
       mockLiteRTModule.resetConversation.mockResolvedValue(undefined);
 
       await liteRTService.prepareConversation('conv-1', 'You are helpful.');
@@ -122,7 +126,7 @@ describe('LiteRTService', () => {
 
       await liteRTService.prepareConversation('conv-1', 'New prompt');
 
-      expect(resetSpy).toHaveBeenCalledWith('New prompt', undefined);
+      expect(resetSpy).toHaveBeenCalledWith('New prompt', { samplerConfig: undefined, tools: undefined, history: undefined });
       expect((liteRTService as any).activeConversationId).toBe('conv-1');
       resetSpy.mockRestore();
     });

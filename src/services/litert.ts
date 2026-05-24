@@ -12,7 +12,7 @@
 import { NativeModules, NativeEventEmitter, EmitterSubscription } from 'react-native';
 import logger from '../utils/logger';
 import { useDebugLogsStore } from '../stores/debugLogsStore';
-import { contextCompactionService } from './contextCompaction';
+import { summarizeSession, runCompaction } from './liteRTCompaction';
 
 const TAG = '[LiteRTService]';
 
@@ -27,6 +27,12 @@ const EVENT_TOOL_CALL = 'litert_tool_call';
 const EVENT_DEBUG_LOG = 'litert_debug_log';
 
 export type LiteRTBackend = 'cpu' | 'gpu' | 'npu';
+
+export interface GenerateRawHandlers {
+  onToken?: (token: string) => void;
+  onToolCall?: (name: string, args: Record<string, unknown>) => Promise<string>;
+  onReasoning?: (token: string) => void;
+}
 
 export interface LiteRTBenchmarkStats {
   ttft: number;
@@ -91,9 +97,7 @@ class LiteRTService {
   // ---------------------------------------------------------------------------
 
   async loadModel(modelPath: string, preferredBackend: LiteRTBackend, opts: { supportsVision?: boolean; maxNumTokens?: number } = {}): Promise<void> {
-    if (!this.isAvailable()) {
-      throw new Error('LiteRT is not available on this platform');
-    }
+    if (!this.isAvailable()) throw new Error('LiteRT is not available on this platform');
     const { supportsVision = false, maxNumTokens = 4096 } = opts;
     this.configuredMaxTokens = maxNumTokens;
     logger.log(TAG, `loadModel — path=${modelPath} backend=${preferredBackend} supportsVision=${supportsVision} maxNumTokens=${maxNumTokens}`);
@@ -123,9 +127,7 @@ class LiteRTService {
       history?: Array<{ role: 'user' | 'assistant'; content: string }>;
     },
   ): Promise<void> {
-    if (!this.isAvailable() || !this.loaded) {
-      throw new Error('No LiteRT model loaded');
-    }
+    if (!this.isAvailable() || !this.loaded) throw new Error('No LiteRT model loaded');
     const { samplerConfig, tools, history } = opts ?? {};
     const temperature = samplerConfig?.temperature ?? 0.8;
     const topK = samplerConfig?.topK ?? 40;
@@ -133,12 +135,10 @@ class LiteRTService {
     const toolsJson = tools && tools.length > 0 ? JSON.stringify(tools) : '';
     const historyJson = history && history.length > 0 ? JSON.stringify(history) : '';
     const dbg = useDebugLogsStore.getState().addLog;
-    logger.log(TAG, `resetConversation — systemPrompt length=${systemPrompt.length} temperature=${temperature} topK=${topK} topP=${topP} tools=${tools?.length ?? 0} history=${history?.length ?? 0}`);
     dbg('log', `[LiteRT] resetConversation — systemLen=${systemPrompt.length} temp=${temperature} topK=${topK} topP=${topP} tools=${tools?.length ?? 0} historyTurns=${history?.length ?? 0}`);
-    if (history && history.length > 0) {
-      const totalHistoryChars = history.reduce((s, m) => s + m.content.length, 0);
-      dbg('log', `[LiteRT] resetConversation history — ${history.map((m, i) => `[${i}] ${m.role}(${m.content.length}ch)`).join(' ')}`);
-      dbg('log', `[LiteRT] resetConversation history chars — total=${totalHistoryChars} estimatedTokens=~${Math.ceil(totalHistoryChars / 4)}`);
+    if (history?.length) {
+      const totalChars = history.reduce((s, m) => s + m.content.length, 0);
+      dbg('log', `[LiteRT] resetConversation history — ${history.length} turns, totalChars=${totalChars} (~${Math.ceil(totalChars / 4)} tokens)`);
     }
     await LiteRTModule.resetConversation(systemPrompt, temperature, topK, topP, toolsJson, historyJson);
     this.activeSystemPrompt = systemPrompt;
@@ -150,8 +150,6 @@ class LiteRTService {
     const systemChars = systemPrompt.length;
     this.cumulativeTokens = Math.ceil((historyChars + systemChars) / 4);
     dbg('log', `[LiteRT] resetConversation done — seeded cumulativeTokens=${this.cumulativeTokens} (historyChars=${historyChars} systemChars=${systemChars})`);
-    logger.log(TAG, `resetConversation — done, seeded cumulativeTokens=${this.cumulativeTokens} from history+system estimate`);
-
   }
 
   /**
@@ -180,65 +178,28 @@ class LiteRTService {
 
     const maxTokens = this.configuredMaxTokens;
     const history = opts?.history;
-    const incomingEstimate = history
-      ? Math.ceil((history.reduce((s, m) => s + m.content.length, 0) + systemPrompt.length) / 4)
-      : 0;
+    const incomingEstimate = history ? Math.ceil((history.reduce((s, m) => s + m.content.length, 0) + systemPrompt.length) / 4) : 0;
 
-    dbg('log', `[LiteRT] prepareConversation — convId=${conversationId.substring(0, 8)} activeConvId=${this.activeConversationId?.substring(0, 8) ?? 'null'} sameConv=${this.activeConversationId === conversationId}`);
-    dbg('log', `[LiteRT] prepareConversation state — cumulativeTokens=${this.cumulativeTokens} maxTokens=${maxTokens} historyTurns=${history?.length ?? 0} incomingEstimate=~${incomingEstimate}`);
+    dbg('log', `[LiteRT] prepareConversation — convId=${conversationId.substring(0, 8)} sameConv=${this.activeConversationId === conversationId} cumul=${this.cumulativeTokens}/${maxTokens} historyTurns=${history?.length ?? 0} incomingEstimate=~${incomingEstimate}`);
 
     const COMPACT_THRESHOLD = 0.65;
-    const needsCompact =
-      maxTokens > 0 &&
-      history &&
-      history.length > 2 &&
-      (this.cumulativeTokens > maxTokens * COMPACT_THRESHOLD || incomingEstimate > maxTokens * COMPACT_THRESHOLD);
-
-    dbg('log', `[LiteRT] prepareConversation compact check — needsCompact=${needsCompact} threshold=${Math.floor(maxTokens * COMPACT_THRESHOLD)} cumul=${this.cumulativeTokens} incoming=~${incomingEstimate}`);
+    const threshold = maxTokens * COMPACT_THRESHOLD;
+    const needsCompact = maxTokens > 0 && !!history && history.length > 2 &&
+      (this.cumulativeTokens > threshold || incomingEstimate > threshold);
+    dbg('log', `[LiteRT] prepareConversation compact check — needsCompact=${needsCompact} threshold=${Math.floor(threshold)} cumul=${this.cumulativeTokens} incoming=~${incomingEstimate}`);
 
     if (needsCompact) {
-      contextCompactionService.signalCompacting(true);
-      try {
-        // Select recent turns that fit within 40% of context by char estimate.
-        // Always keep at least the last 2 turns regardless of budget.
-        const recentBudgetChars = Math.floor(maxTokens * 0.40) * 4;
-        let charCount = 0;
-        let recentStart = history!.length;
-        for (let i = history!.length - 1; i >= 0; i--) {
-          charCount += history![i].content.length;
-          if (charCount > recentBudgetChars) break;
-          recentStart = i;
-        }
-        recentStart = Math.min(recentStart, Math.max(0, history!.length - 2));
-        const recentHistory = history!.slice(recentStart);
-
-        const hasActiveSession = this.activeConversationId === conversationId;
-        let summary: string | null = null;
-
-        if (hasActiveSession) {
-          dbg('log', `[LiteRT] compact — active session, requesting summary (cumulative=${this.cumulativeTokens}/${maxTokens})`);
-          logger.log(TAG, `prepareConversation — compact: active session at cumulative=${this.cumulativeTokens}/${maxTokens}, requesting summary`);
-          summary = await this.summarizeCurrentSession();
-          dbg('log', `[LiteRT] compact summary — got=${!!summary} length=${summary?.length ?? 0} chars`);
-        } else {
-          dbg('log', `[LiteRT] compact — no active session, slicing only (incomingEstimate=~${incomingEstimate}/${maxTokens})`);
-          logger.log(TAG, `prepareConversation — compact: first load, incomingEstimate=${incomingEstimate}/${maxTokens}, no active session to summarize — slicing`);
-        }
-
-        const compactedHistory: Array<{ role: 'user' | 'assistant'; content: string }> = summary
-          ? [
-              { role: 'user', content: `[Context from earlier in our conversation]: ${summary}` },
-              { role: 'assistant', content: 'Understood.' },
-              ...recentHistory,
-            ]
-          : recentHistory;
-
-        dbg('log', `[LiteRT] compact done — ${history!.length} → ${compactedHistory.length} turns, summarized=${!!summary}`);
-        logger.log(TAG, `prepareConversation — compact done: ${history!.length} → ${compactedHistory.length} turns, summarized=${!!summary}`);
-        await this.resetConversation(systemPrompt, { samplerConfig: opts?.samplerConfig, tools: opts?.tools, history: compactedHistory });
-      } finally {
-        contextCompactionService.signalCompacting(false);
-      }
+      await runCompaction({
+        history: history!,
+        systemPrompt,
+        maxTokens,
+        cumulativeTokens: this.cumulativeTokens,
+        conversationId,
+        activeConversationId: this.activeConversationId,
+        opts: { samplerConfig: opts?.samplerConfig, tools: opts?.tools },
+        summarize: () => this.summarizeCurrentSession(),
+        resetFn: (p, o) => this.resetConversation(p, o),
+      });
       this.activeConversationId = conversationId;
       this.activeSystemPrompt = systemPrompt;
       this.activeToolsJson = toolsJson;
@@ -249,62 +210,29 @@ class LiteRTService {
       this.activeConversationId !== conversationId ||
       this.activeSystemPrompt !== systemPrompt ||
       this.activeToolsJson !== toolsJson;
-
-    const resetReason = needsReset
-      ? [
-          this.activeConversationId !== conversationId ? `newConv(${this.activeConversationId?.substring(0, 8) ?? 'null'}→${conversationId.substring(0, 8)})` : '',
-          this.activeSystemPrompt !== systemPrompt ? 'sysPromptChanged' : '',
-          this.activeToolsJson !== toolsJson ? 'toolsChanged' : '',
-        ].filter(Boolean).join(' ')
-      : 'none';
+    const resetReason = !needsReset ? 'none' : [
+      this.activeConversationId !== conversationId ? 'newConv' : '',
+      this.activeSystemPrompt !== systemPrompt ? 'sysPromptChanged' : '',
+      this.activeToolsJson !== toolsJson ? 'toolsChanged' : '',
+    ].filter(Boolean).join('+');
 
     dbg('log', `[LiteRT] prepareConversation decision — needsReset=${needsReset} reason=${resetReason} historyTurns=${opts?.history?.length ?? 0}`);
 
     if (needsReset) {
-      logger.log(TAG, `prepareConversation — reset (convId changed=${this.activeConversationId !== conversationId}, sysPrompt changed=${this.activeSystemPrompt !== systemPrompt}, tools changed=${this.activeToolsJson !== toolsJson}, history=${opts?.history?.length ?? 0})`);
       await this.resetConversation(systemPrompt, { samplerConfig: opts?.samplerConfig, tools: opts?.tools, history: opts?.history });
       this.activeConversationId = conversationId;
       dbg('log', `[LiteRT] prepareConversation reset complete — activeConvId set to ${conversationId.substring(0, 8)}`);
     } else {
-      dbg('log', `[LiteRT] prepareConversation — reusing existing session (multi-turn, no reset)`);
+      dbg('log', '[LiteRT] prepareConversation — reusing existing session (multi-turn, no reset)');
       logger.log(TAG, 'prepareConversation — reusing existing conversation (multi-turn)');
     }
   }
 
-  /**
-   * Ask the active session to summarize itself while headroom remains (called at
-   * 65% context, so ~35% is free for the request + response).
-   * Returns null on timeout or error so callers can fall back to slice.
-   */
   private summarizeCurrentSession(): Promise<string | null> {
-    return new Promise<string | null>((resolve) => {
-      if (!this.isAvailable() || !this.loaded) {
-        resolve(null);
-        return;
-      }
-      let summary = '';
-      const timeout = setTimeout(() => {
-        logger.log(TAG, 'summarizeCurrentSession — timed out, falling back to slice');
-        resolve(null);
-      }, 20_000);
-      this.sendMessage(
-        'Briefly summarize our conversation so far — key topics, decisions, and context. 3 to 5 sentences maximum.',
-        {
-          onToken: (token) => { summary += token; },
-          onReasoning: () => {},
-          onComplete: () => {
-            clearTimeout(timeout);
-            logger.log(TAG, `summarizeCurrentSession — got summary (${summary.length} chars)`);
-            resolve(summary.trim() || null);
-          },
-          onError: (err) => {
-            clearTimeout(timeout);
-            logger.log(TAG, `summarizeCurrentSession — error: ${String(err)}, falling back to slice`);
-            resolve(null);
-          },
-        },
-      );
-    });
+    return summarizeSession(
+      (text, cbs) => this.sendMessage(text, cbs),
+      this.isAvailable() && this.loaded,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -342,13 +270,9 @@ class LiteRTService {
     callbacks: LiteRTGenerationCallbacks,
     imageUri?: string,
   ): Promise<void> {
-    if (!this.isAvailable() || !this.loaded) {
-      callbacks.onError(new Error('No LiteRT model loaded'));
-      return;
-    }
+    if (!this.isAvailable() || !this.loaded) { callbacks.onError(new Error('No LiteRT model loaded')); return; }
 
     const sendMsgDbg = useDebugLogsStore.getState().addLog;
-    logger.log(TAG, `sendMessage — text length=${text.length}`);
     sendMsgDbg('log', `[Vision] sendMessage called — textLen=${text.length} hasImage=${imageUri != null} imageUri=${imageUri ? imageUri.substring(0, 80) : 'none'}`);
 
     // Reset accumulators
@@ -459,11 +383,10 @@ class LiteRTService {
 
   async generateRaw(
     text: string,
-    onToken?: (token: string) => void,
-    onToolCall?: (name: string, args: Record<string, unknown>) => Promise<string>,
     imageUri?: string,
-    onReasoning?: (token: string) => void,
+    handlers?: GenerateRawHandlers,
   ): Promise<string> {
+    const { onToken, onToolCall, onReasoning } = handlers ?? {};
     logger.log(TAG, `generateRaw — text=${text.length}ch, hasToolHandler=${!!onToolCall}, hasImage=${!!imageUri}, first100="${text.substring(0, 100)}"`);
     this.currentToolCallHandler = onToolCall ?? null;
     return new Promise((resolve, reject) => {
@@ -492,11 +415,9 @@ class LiteRTService {
     if (!this.isAvailable()) return;
     logger.log(TAG, 'stopGeneration');
     this.clearSubscriptions();
-    try {
-      await LiteRTModule.stopGeneration();
-    } catch (e) {
-      logger.log(TAG, `stopGeneration — error (ignored): ${String(e)}`);
-    }
+    this.activeConversationId = null;
+    try { await LiteRTModule.stopGeneration(); }
+    catch (e) { logger.log(TAG, `stopGeneration — error (ignored): ${String(e)}`); }
   }
 
   // ---------------------------------------------------------------------------
@@ -562,12 +483,8 @@ class LiteRTService {
 
   async getMemoryInfo(): Promise<LiteRTMemoryInfo | null> {
     if (!this.isAvailable()) return null;
-    try {
-      return await LiteRTModule.getMemoryInfo();
-    } catch (e) {
-      logger.log(TAG, `getMemoryInfo — error: ${String(e)}`);
-      return null;
-    }
+    try { return await LiteRTModule.getMemoryInfo(); }
+    catch (e) { logger.log(TAG, `getMemoryInfo — error: ${String(e)}`); return null; }
   }
 
   // ---------------------------------------------------------------------------
