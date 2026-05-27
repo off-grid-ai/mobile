@@ -10,6 +10,7 @@ import { EmptyChat, ImageProgressIndicator } from './ChatScreenComponents';
 import { getPlaceholderText, useChatScreen } from './useChatScreen';
 import { createStyles } from './styles';
 import { useTheme } from '../../theme';
+import { useAppStore } from '../../stores';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
@@ -29,6 +30,8 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
   flatListRef, isNearBottomRef, chat, styles, colors, handleScroll, renderItem, chatSpotlight,
 }) => {
   const tabNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { toolCountHintDismissed } = useAppStore();
+  const showSettingsDot = chat.enabledTools.length > 3 && !toolCountHintDismissed;
   const [inputHeight, setInputHeight] = useState(84);
   const flatListHeightRef = useRef(0);
   const isStreaming = chat.isStreaming || chat.isThinking;
@@ -142,6 +145,7 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
             })}
             onToolsPress={() => chat.setShowToolPicker(true)}
             enabledToolCount={chat.enabledTools.length}
+            showSettingsDot={showSettingsDot}
             supportsToolCalling={chat.supportsToolCalling}
             supportsThinking={chat.supportsThinking}
             onRepairVision={handleRepairVision}

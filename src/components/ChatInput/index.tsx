@@ -13,7 +13,6 @@ import { AttachmentPreview, useAttachments } from './Attachments';
 import { useVoiceInput } from './Voice';
 import { QuickSettingsPopover, AttachPickerPopover } from './Popovers';
 import { useKeyboardAwarePopover } from './useKeyboardAwarePopover';
-import { useAppStore } from '../../stores';
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: MediaAttachment[], imageMode?: ImageModeState) => void;
@@ -36,6 +35,7 @@ interface ChatInputProps {
   onRepairVision?: () => void;
   /** When set, mounts a single AttachStep for that index. Only one at a time to avoid waypoint dots. */
   activeSpotlight?: number | null;
+  showSettingsDot?: boolean;
 }
 
 const IMAGE_MODE_CYCLE: ImageModeState[] = ['auto', 'force', 'disabled'];
@@ -62,11 +62,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   supportsThinking = false,
   onRepairVision,
   activeSpotlight = null,
+  showSettingsDot = false,
 }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { settings, toolCountHintDismissed } = useAppStore();
-  const showSettingsDot = settings.enabledTools.length > 3 && !toolCountHintDismissed;
   const [message, setMessage] = useState('');
   const [imageMode, setImageMode] = useState<ImageModeState>('auto');
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
