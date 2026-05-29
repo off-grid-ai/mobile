@@ -1,6 +1,6 @@
 {
   "name": "offgrid-mobile",
-  "version": "0.0.93",
+  "version": "0.0.94",
   "private": true,
   "scripts": {
     "android": "react-native run-android --mode=debug --appId ai.offgridmobile.dev",
@@ -39,6 +39,7 @@
     "llama.rn": "^0.12.0-rc.9",
     "lottie-react-native": "^7.3.5",
     "moti": "^0.30.0",
+    "node-html-parser": "^7.1.0",
     "patch-package": "^8.0.1",
     "react": "19.2.0",
     "react-native": "0.83.1",
@@ -75,7 +76,9 @@
     "@types/node": "^25.3.5",
     "@types/react": "^19.2.0",
     "@types/react-test-renderer": "^19.1.0",
+    "babel-plugin-react-compiler": "^1.0.0",
     "eslint": "^8.19.0",
+    "eslint-plugin-react-compiler": "^19.1.0-rc.2",
     "husky": "^9.1.7",
     "jest": "^29.6.3",
     "lint-staged": "^15.5.2",
