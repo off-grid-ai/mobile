@@ -132,7 +132,7 @@ describe('Tool Registry', () => {
       const hint = buildToolSystemPromptHint(['calculator', 'web_search']);
 
       expect(hint).toContain('- calculator: Evaluate math expressions');
-      expect(hint).toContain('- web_search: Search the web');
+      expect(hint).toContain('- web_search: Search the live web');
       expect(hint).toContain('Tools available');
     });
 
