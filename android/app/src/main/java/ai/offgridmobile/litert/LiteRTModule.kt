@@ -3,6 +3,7 @@ package ai.offgridmobile.litert
 import android.util.Log
 import android.app.ActivityManager
 import android.content.Context
+import android.os.Build
 import android.os.Debug
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
@@ -68,7 +69,7 @@ class LiteRTModule(private val reactContext: ReactApplicationContext) :
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private var engine: Engine? = null
-    private var conversation: com.google.ai.edge.litertlm.Conversation? = null
+    @Volatile private var conversation: com.google.ai.edge.litertlm.Conversation? = null
     private var activeBackend: String = "cpu"
     private var supportsVision: Boolean = false
     private var currentJob: Job? = null
@@ -111,14 +112,18 @@ class LiteRTModule(private val reactContext: ReactApplicationContext) :
     }
 
     // 3-tier fallback: NPU → GPU → CPU
-    private fun buildBackendChain(requested: Backend): List<Backend> = when (requested) {
-        is Backend.NPU -> listOf(
-            Backend.NPU(nativeLibraryDir = reactContext.applicationInfo.nativeLibraryDir),
-            Backend.GPU(),
-            Backend.CPU(),
-        )
-        is Backend.GPU -> listOf(Backend.GPU(), Backend.CPU())
-        else           -> listOf(Backend.CPU())
+    private fun buildBackendChain(requested: Backend): List<Backend> {
+        // GPU init crashes on Pixel 10 — open LiteRT SDK bug.
+        val skipGpu = Build.MODEL?.lowercase()?.contains("pixel 10") == true
+        return when (requested) {
+            is Backend.NPU -> listOfNotNull(
+                Backend.NPU(nativeLibraryDir = reactContext.applicationInfo.nativeLibraryDir),
+                if (skipGpu) null else Backend.GPU(),
+                Backend.CPU(),
+            )
+            is Backend.GPU -> if (skipGpu) listOf(Backend.CPU()) else listOf(Backend.GPU(), Backend.CPU())
+            else           -> listOf(Backend.CPU())
+        }
     }
 
     private suspend fun tryInitBackend(modelPath: String, backend: Backend, name: String, visionEnabled: Boolean): Boolean {
@@ -366,18 +371,17 @@ class LiteRTModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stopGeneration(promise: Promise) {
         val safe = SafePromise(promise, TAG)
-        Log.i(TAG, "stopGeneration — tearing down conversation")
-
-        scope.launch {
-            try {
-                closeConversationSafely()
-                Log.i(TAG, "stopGeneration — done")
-                safe.resolve(null)
-            } catch (e: Exception) {
-                Log.w(TAG, "stopGeneration — error during teardown: ${e.message}")
-                safe.resolve(null)
-            }
+        Log.i(TAG, "stopGeneration — signalling stop")
+        // Cancel the coroutine job — CancellationException propagates into sendMessageAsync
+        currentJob?.cancel()
+        // Signal the native inference thread to stop — safe to call from any thread
+        try {
+            conversation?.cancelProcess()
+        } catch (e: Exception) {
+            Log.w(TAG, "stopGeneration — cancelProcess error: ${e.message}")
         }
+        Log.i(TAG, "stopGeneration — done")
+        safe.resolve(null)
     }
 
     // -------------------------------------------------------------------------
@@ -417,6 +421,7 @@ class LiteRTModule(private val reactContext: ReactApplicationContext) :
     // -------------------------------------------------------------------------
 
     private suspend fun closeConversationSafely() {
+        // Cancel and wait for any running inference job to fully stop before closing
         currentJob?.cancel()
         currentJob?.join()
         currentJob = null
@@ -427,13 +432,21 @@ class LiteRTModule(private val reactContext: ReactApplicationContext) :
         }
         pendingToolCalls.clear()
 
+        // Null first — any concurrent caller gets null and returns, preventing double-close
+        val conv = conversation ?: return
+        conversation = null
+
+        // Safety net: signal stop in case stopGeneration was not called before close
         try {
-            conversation?.close()
+            conv.cancelProcess()
+        } catch (e: Exception) {
+            Log.w(TAG, "closeConversationSafely — cancelProcess error: ${e.message}")
+        }
+        try {
+            conv.close()
             Log.d(TAG, "closeConversationSafely — closed")
         } catch (e: Exception) {
             Log.w(TAG, "closeConversationSafely — error: ${e.message}")
-        } finally {
-            conversation = null
         }
     }
 
