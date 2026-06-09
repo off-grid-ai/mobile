@@ -7,6 +7,7 @@ import { useChatStore, useRemoteServerStore, useAppStore } from '../stores';
 import { Message } from '../types';
 import { getToolsAsOpenAISchema, executeToolCall } from './tools';
 import type { ToolCall, ToolResult } from './tools/types';
+import { getToolExtensions } from './tools/extensions';
 import { providerRegistry } from './providers';
 import type { GenerationOptions, CompletionResult } from './providers/types';
 import logger from '../utils/logger';
@@ -193,6 +194,7 @@ function getLastUserQuery(messages: Message[]): string {
 }
 async function executeToolCalls(ctx: ToolLoopContext, toolCalls: import('./tools/types').ToolCall[], loopMessages: Message[]): Promise<void> {
   const chatStore = useChatStore.getState();
+  const exts = getToolExtensions();
   for (const tc of toolCalls) {
     if (ctx.isAborted()) break;
     // Small models often call web_search with empty args — use user's message as fallback
@@ -206,7 +208,8 @@ async function executeToolCalls(ctx: ToolLoopContext, toolCalls: import('./tools
     logger.log(`[ToolLoop][DEBUG] Executing tool: ${tc.name}, args: ${JSON.stringify(tc.arguments).substring(0, 200)}`);
     if (ctx.projectId) tc.context = { projectId: ctx.projectId };
     ctx.callbacks?.onToolCallStart?.(tc.name, tc.arguments);
-    const result = await executeToolCall(tc);
+    const ext = exts.find(e => e.canHandle(tc.name));
+    const result = ext ? await ext.execute(tc) : await executeToolCall(tc);
     logger.log(`[ToolLoop][DEBUG] Tool ${tc.name} result: error=${result.error || 'none'}, content length=${result.content?.length || 0}, duration=${result.durationMs}ms`);
     ctx.callbacks?.onToolCallComplete?.(tc.name, result);
     const toolResultMsg: Message = {
@@ -405,7 +408,8 @@ function augmentSystemPromptForTools(messages: Message[]): Message[] {
   if (sysIdx === -1) return messages;
   const sys = messages[sysIdx];
   const existing = typeof sys.content === 'string' ? sys.content : '';
-  const updated = { ...sys, content: existing + TOOL_BEHAVIOR_GUIDANCE };
+  const extHints = getToolExtensions().map(e => e.getSystemPromptHint()).filter(Boolean).join('');
+  const updated = { ...sys, content: existing + TOOL_BEHAVIOR_GUIDANCE + extHints };
   return [...messages.slice(0, sysIdx), updated, ...messages.slice(sysIdx + 1)];
 }
 
@@ -419,8 +423,11 @@ async function callLLMWithRetry(
 ): Promise<{ fullResponse: string; toolCalls: ToolCall[] }> {
   // Append tool-use behavioral guidance to the system prompt when tools are present.
   // Only covers the "when and how" — schemas are injected separately by each engine.
+  // Also append extension system-prompt hints so the model knows about MCP/pro tools.
   // We shallow-copy messages to avoid mutating the caller's array.
-  const augmentedMessages = tools.length > 0 ? augmentSystemPromptForTools(messages) : messages;
+  const exts = getToolExtensions();
+  const extCount = exts.reduce((n, e) => n + e.enabledToolCount(), 0);
+  const augmentedMessages = (tools.length > 0 || extCount > 0) ? augmentSystemPromptForTools(messages) : messages;
 
   if (isLiteRTActive() && conversationId) {
     return callLiteRTForLoop(conversationId, augmentedMessages, { tools, onStream, ctx });
@@ -435,24 +442,41 @@ async function callLLMWithRetry(
   return callLocalWithRetry(augmentedMessages, tools, onStream);
 }
 
-/** If no structured tool calls, try parsing <tool_call> tags or Gemma's native format from text. */
+/** If no structured tool calls, try parsing <tool_call> tags or Gemma's native format from text.
+ *  Also collects tool calls from any registered extensions and strips their syntax from display text. */
 function resolveToolCalls(fullResponse: string, toolCalls: ToolCall[]) {
-  if (toolCalls.length > 0) return { effectiveToolCalls: toolCalls, displayResponse: fullResponse };
-  if (fullResponse.includes('<tool_call>')) {
-    const parsed = parseToolCallsFromText(fullResponse);
-    if (parsed.toolCalls.length > 0) {
-      logger.log(`[ToolLoop] Parsed ${parsed.toolCalls.length} tool call(s) from <tool_call> tags`);
-      return { effectiveToolCalls: parsed.toolCalls, displayResponse: parsed.cleanText };
+  let effectiveToolCalls: ToolCall[] = toolCalls.length > 0 ? [...toolCalls] : [];
+  let displayResponse = fullResponse;
+
+  if (effectiveToolCalls.length === 0) {
+    if (fullResponse.includes('<tool_call>')) {
+      const parsed = parseToolCallsFromText(fullResponse);
+      if (parsed.toolCalls.length > 0) {
+        logger.log(`[ToolLoop] Parsed ${parsed.toolCalls.length} tool call(s) from <tool_call> tags`);
+        effectiveToolCalls = parsed.toolCalls;
+        displayResponse = parsed.cleanText;
+      }
+    } else if (fullResponse.includes('<|tool_call>') || fullResponse.includes('<tool_call:')) {
+      const parsed = parseGemmaNativeToolCalls(fullResponse);
+      if (parsed.toolCalls.length > 0) {
+        logger.log(`[ToolLoop] Parsed ${parsed.toolCalls.length} tool call(s) from Gemma native format`);
+        effectiveToolCalls = parsed.toolCalls;
+        displayResponse = parsed.cleanText;
+      }
     }
   }
-  if (fullResponse.includes('<|tool_call>') || fullResponse.includes('<tool_call:')) {
-    const parsed = parseGemmaNativeToolCalls(fullResponse);
-    if (parsed.toolCalls.length > 0) {
-      logger.log(`[ToolLoop] Parsed ${parsed.toolCalls.length} tool call(s) from Gemma native format`);
-      return { effectiveToolCalls: parsed.toolCalls, displayResponse: parsed.cleanText };
+
+  // Parse extension tool calls and strip their syntax from the visible text
+  for (const ext of getToolExtensions()) {
+    const extCalls = ext.parseToolCalls(displayResponse);
+    if (extCalls.length > 0) {
+      logger.log(`[ToolLoop] Extension ${ext.id} parsed ${extCalls.length} tool call(s)`);
+      effectiveToolCalls.push(...extCalls);
     }
+    displayResponse = ext.stripFromVisibleText(displayResponse);
   }
-  return { effectiveToolCalls: toolCalls, displayResponse: fullResponse };
+
+  return { effectiveToolCalls, displayResponse };
 }
 
 interface ToolLoopState {

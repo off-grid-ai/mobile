@@ -18,6 +18,7 @@ import {
   retrievalService,
 } from '../../services';
 import { liteRTService } from '../../services/litert';
+import { getToolExtensions } from '../../services/tools/extensions';
 import { embeddingService } from '../../services/rag/embedding';
 import { useChatStore, useProjectStore, useRemoteServerStore } from '../../stores';
 import { Message, MediaAttachment, Project, DownloadedModel, RemoteModel, ModelLoadingStrategy, CacheType } from '../../types';
@@ -180,7 +181,8 @@ async function generateWithCompactionRetry(
   enabledTools: string[],
   projectId?: string,
 ): Promise<void> {
-  const gen = (msgs: Message[]) => enabledTools.length > 0
+  const extCount = getToolExtensions().reduce((n, e) => n + e.enabledToolCount(), 0);
+  const gen = (msgs: Message[]) => (enabledTools.length > 0 || extCount > 0)
     ? generationService.generateWithTools(opts.id, msgs, { enabledToolIds: enabledTools, projectId })
     : generationService.generateResponse(opts.id, msgs);
   try { await gen(opts.messages); } catch (error: any) {

@@ -31,6 +31,8 @@ interface ChatInputProps {
   onToolsPress?: () => void;
   enabledToolCount?: number;
   supportsToolCalling?: boolean;
+  mcpToolCount?: number;
+  onMcpPress?: () => void;
   supportsThinking?: boolean;
   onRepairVision?: () => void;
   /** When set, mounts a single AttachStep for that index. Only one at a time to avoid waypoint dots. */
@@ -60,6 +62,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   enabledToolCount = 0,
   supportsToolCalling = false,
   supportsThinking = false,
+  mcpToolCount = 0,
+  onMcpPress,
   onRepairVision,
   activeSpotlight = null,
   showSettingsDot = false,
@@ -292,6 +296,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         supportsToolCalling={supportsToolCalling}
         enabledToolCount={enabledToolCount}
         onToolsPress={onToolsPress}
+        mcpToolCount={mcpToolCount}
+        onMcpPress={onMcpPress}
       />
 
       <CustomAlert

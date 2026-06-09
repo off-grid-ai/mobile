@@ -44,6 +44,7 @@ import {
   RootStackParamList,
   MainTabParamList,
 } from './types';
+import { getRegisteredScreens } from './screenRegistry';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -254,6 +255,9 @@ export const AppNavigator: React.FC = () => {
           component={GalleryScreen}
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />
+        {getRegisteredScreens().map(s => (
+          <RootStack.Screen key={s.name} name={s.name as any} component={s.component} />
+        ))}
       </RootStack.Navigator>
     </SpotlightTourProvider>
   );

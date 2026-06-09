@@ -13,6 +13,8 @@ import { getPlaceholderText, useChatScreen } from './useChatScreen';
 import { createStyles } from './styles';
 import { useTheme } from '../../theme';
 import { useAppStore } from '../../stores';
+import { getToolExtensions } from '../../services/tools/extensions';
+import { getRegisteredScreens } from '../../navigation/screenRegistry';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
@@ -33,7 +35,17 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
 }) => {
   const tabNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { toolCountHintDismissed } = useAppStore();
-  const showSettingsDot = chat.enabledTools.length > 3 && !toolCountHintDismissed;
+  const extToolCount = getToolExtensions().reduce((n, e) => n + e.enabledToolCount(), 0);
+  const totalToolCount = chat.enabledTools.length + extToolCount;
+  const handleMcpPress = () => {
+    const hasMcpScreen = getRegisteredScreens().some(s => s.name === 'McpServers');
+    if (hasMcpScreen) {
+      tabNav.navigate('McpServers' as any);
+    } else {
+      tabNav.navigate('ProDetail');
+    }
+  };
+  const showSettingsDot = totalToolCount > 3 && !toolCountHintDismissed;
   const [inputHeight, setInputHeight] = useState(84);
   const flatListHeightRef = useRef(0);
   const isStreaming = chat.isStreaming || chat.isThinking;
@@ -157,8 +169,10 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
               imageOnly: chat.imageModelLoaded && !chat.hasTextModel,
             })}
             onToolsPress={() => chat.setShowToolPicker(true)}
-            enabledToolCount={chat.enabledTools.length}
+            enabledToolCount={totalToolCount}
             showSettingsDot={showSettingsDot}
+            mcpToolCount={extToolCount}
+            onMcpPress={handleMcpPress}
             supportsToolCalling={chat.supportsToolCalling}
             supportsThinking={chat.supportsThinking}
             onRepairVision={handleRepairVision}

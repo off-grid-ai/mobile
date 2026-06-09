@@ -30,6 +30,7 @@ import { hardwareService } from '../services';
 import { RootStackParamList, MainTabParamList } from '../navigation/types';
 import { GITHUB_URL, SHARE_ON_X_URL } from '../utils/sharePrompt';
 import packageJson from '../../package.json';
+import { getSettingsSections } from '../components/settings/sectionRegistry';
 
 const FEEDBACK_EMAIL = 'support@offgridmobile.co';
 
@@ -249,6 +250,9 @@ export const SettingsScreen: React.FC = () => {
             <Icon name="chevron-right" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         </AnimatedEntry>
+
+        {/* Pro feature sections registered at runtime by @offgrid/pro */}
+        {getSettingsSections().map((Section, i) => <Section key={i} />)}
 
         {/* Community */}
         <AnimatedEntry index={7} staggerMs={40} trigger={focusTrigger}>

@@ -70,6 +70,8 @@ interface QuickSettingsPopoverProps {
   supportsToolCalling: boolean;
   enabledToolCount: number;
   onToolsPress?: () => void;
+  mcpToolCount?: number;
+  onMcpPress?: () => void;
 }
 
 function getImageModeBadge(mode: ImageModeState, colors: any) {
@@ -99,6 +101,7 @@ export const QuickSettingsPopover: React.FC<QuickSettingsPopoverProps> = ({
   visible, onClose, anchorY, anchorX,
   imageMode, onImageModeToggle, imageModelLoaded, supportsThinking,
   supportsToolCalling, enabledToolCount, onToolsPress,
+  mcpToolCount = 0, onMcpPress,
 }) => {
   const { colors } = useTheme();
   const { settings, updateSettings, toolCountHintDismissed } = useAppStore();
@@ -168,6 +171,22 @@ export const QuickSettingsPopover: React.FC<QuickSettingsPopoverProps> = ({
                 <Text style={[popoverStyles.rowLabel, { color: tools.labelColor }]}>Tools</Text>
                 <View style={[popoverStyles.badge, { backgroundColor: toolBadgeBg }]}>
                   <Text style={[popoverStyles.badgeText, { color: colors.background }]}>{tools.badgeLabel}</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                testID="quick-mcp"
+                style={popoverStyles.row}
+                onPress={() => {
+                  triggerHaptic('impactLight');
+                  onClose();
+                  onMcpPress?.();
+                }}
+              >
+                <Icon name="cpu" size={16} color={mcpToolCount > 0 ? colors.primary : colors.textMuted} />
+                <Text style={[popoverStyles.rowLabel, { color: colors.text }]}>MCP</Text>
+                <View style={[popoverStyles.badge, { backgroundColor: mcpToolCount > 0 ? colors.primary : colors.textMuted }]}>
+                  <Text style={[popoverStyles.badgeText, { color: colors.background }]}>{mcpToolCount}</Text>
                 </View>
               </TouchableOpacity>
             </View>

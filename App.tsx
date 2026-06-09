@@ -19,6 +19,7 @@ import { useDownloadListeners } from './src/hooks/useDownloads';
 import { LockScreen } from './src/screens';
 import { useAppState } from './src/hooks/useAppState';
 import { useDownloadStore } from './src/stores/downloadStore';
+import { loadProFeatures } from './src/bootstrap/loadProFeatures';
 
 LogBox.ignoreAllLogs(); // Suppress all logs
 
@@ -165,6 +166,9 @@ function App() {
 
       // Initialize RAG database tables
       ragService.ensureReady().catch((err) => logger.error('Failed to initialize RAG service on startup', err));
+
+      // Load pro features if @offgrid/pro is installed and receipt is valid
+      loadProFeatures().catch((err) => logger.error('[App] loadProFeatures failed:', err));
 
       // Show the UI immediately
       setIsInitializing(false);
