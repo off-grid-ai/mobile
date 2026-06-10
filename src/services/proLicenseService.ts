@@ -19,8 +19,9 @@ export function onProStatusChange( cb: () => void): () => void {
   return () => listeners.delete(cb);
 }
 
-// TODO: remove before shipping — bypasses receipt check for local dev
-const DEV_BYPASS_PRO = __DEV__;
+// TODO: remove before shipping — bypasses receipt check for local dev.
+// Disabled under Jest so the real receipt-validation logic is exercised by tests.
+const DEV_BYPASS_PRO = __DEV__ && process.env.JEST_WORKER_ID === undefined;
 
 // production: validate the Apple/Google receipt signature (react-native-iap)
 async function validateStoredReceipt(): Promise<boolean> {

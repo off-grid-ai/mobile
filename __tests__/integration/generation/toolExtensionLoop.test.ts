@@ -33,11 +33,16 @@ jest.mock('../../../src/services/tools', () => ({
   executeToolCall: jest.fn().mockResolvedValue({ name: 'builtin', content: 'builtin-result', durationMs: 1 }),
 }));
 
-// Mock remote server store so we stay on the local path
+// Mock the stores index: pull in the REAL chat + app stores (the loop reads/writes
+// them and the test asserts on stored messages), stub the remote server store so we
+// stay on the local path. Requiring the submodules directly avoids loading the full
+// stores index (auth/whisper/project), which fails to initialise in this test env.
 jest.mock('../../../src/stores', () => {
-  const actual = jest.requireActual('../../../src/stores');
+  const { useChatStore } = jest.requireActual('../../../src/stores/chatStore');
+  const { useAppStore } = jest.requireActual('../../../src/stores/appStore');
   return {
-    ...actual,
+    useChatStore,
+    useAppStore,
     useRemoteServerStore: {
       getState: () => ({ activeServerId: null, activeRemoteTextModelId: null }),
     },
