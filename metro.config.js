@@ -2,14 +2,16 @@ const path = require('path');
 const fs = require('fs');
 const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 
-const proPackagePath = path.resolve(__dirname, '../offgrid-pro');
+const proPackagePath = path.resolve(__dirname, 'pro');
 const proStubPath = path.resolve(__dirname, 'src/bootstrap/proStub.js');
-const proExists = fs.existsSync(proPackagePath);
+// pro/ is a git submodule: the directory exists even when not checked out, so test
+// for a real file inside it (package.json) to detect a populated submodule.
+const proExists = fs.existsSync(path.resolve(proPackagePath, 'package.json'));
 
 const config = {
-  // Metro only watches the project root by default; files outside it (like the
-  // sibling @offgrid/pro package) must be listed here or require() will fail.
-  watchFolders: proExists ? [proPackagePath] : [],
+  // pro/ is a submodule inside the project root, so Metro already watches it by
+  // default; nothing extra needed here. (When absent it's just an empty dir.)
+  watchFolders: [],
   resolver: {
     // When resolving modules from outside the project root (i.e. @offgrid/pro),
     // Metro falls back here so @babel/runtime and all other peer deps are found.

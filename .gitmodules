@@ -1,0 +1,3 @@
+[submodule "pro"]
+	path = pro
+	url = https://github.com/dishit-wednesday/private-offgrid.git
