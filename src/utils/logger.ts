@@ -6,6 +6,13 @@ const RETAINED_LOG_LINES = 4000;
 
 let writeQueue = Promise.resolve();
 
+type LogListener = (entry: { timestamp: number; level: 'log' | 'warn' | 'error'; message: string }) => void;
+let _logListener: LogListener | null = null;
+
+export function setLogListener(fn: LogListener): void {
+  _logListener = fn;
+}
+
 function getLogFilePath(): string {
   return `${RNFS.DocumentDirectoryPath}/${LOG_FILE_NAME}`;
 }
@@ -51,6 +58,11 @@ function appendPersistentLog(level: 'log' | 'warn' | 'error', args: unknown[]): 
 
 function capture(level: 'log' | 'warn' | 'error', args: unknown[]): void {
   appendPersistentLog(level, args);
+  if (_logListener) {
+    try {
+      _logListener({ timestamp: Date.now(), level, message: args.map(formatArg).join(' ') });
+    } catch { /* listener must never break logging */ }
+  }
 }
 
 const logger = {

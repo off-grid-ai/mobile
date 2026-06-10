@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import { Card } from '../components';
 import { AnimatedEntry } from '../components/AnimatedEntry';
 import { AnimatedListItem } from '../components/AnimatedListItem';
 import { MadeWithLove } from '../components/MadeWithLove';
+import { DebugLogsScreen } from '../components/DebugLogsScreen';
+import { getSettingsSections } from '../components/settings/sectionRegistry';
 import { useFocusTrigger } from '../hooks/useFocusTrigger';
 import { useTheme, useThemedStyles } from '../theme';
 import type { ThemeColors, ThemeShadows } from '../theme';
@@ -30,7 +32,6 @@ import { hardwareService } from '../services';
 import { RootStackParamList, MainTabParamList } from '../navigation/types';
 import { GITHUB_URL, SHARE_ON_X_URL } from '../utils/sharePrompt';
 import packageJson from '../../package.json';
-import { getSettingsSections } from '../components/settings/sectionRegistry';
 
 const FEEDBACK_EMAIL = 'support@offgridmobile.co';
 
@@ -49,6 +50,7 @@ export const SettingsScreen: React.FC = () => {
   const setThemeMode = useAppStore((s) => s.setThemeMode);
   const completeChecklistStep = useAppStore((s) => s.completeChecklistStep);
   const resetChecklist = useAppStore((s) => s.resetChecklist);
+  const [showDebugLogs, setShowDebugLogs] = useState(false);
   const deviceInfo = useAppStore((s) => s.deviceInfo);
   const showProBanner = useAppStore((s) => !s.proBannerDismissed);
   const setProBannerDismissed = useAppStore((s) => s.setProBannerDismissed);
@@ -320,6 +322,9 @@ export const SettingsScreen: React.FC = () => {
           </Card>
         </AnimatedEntry>
 
+        {/* Pro feature sections registered at runtime by @offgrid/pro */}
+        {getSettingsSections().map((Section, i) => <Section key={i} />)}
+
         {/* Reset Onboarding */}
         <AnimatedEntry index={10} staggerMs={40} trigger={focusTrigger}>
           <View style={styles.devButtonGroup}>
@@ -331,9 +336,14 @@ export const SettingsScreen: React.FC = () => {
               <Icon name="list" size={14} color={colors.textMuted} />
               <Text style={styles.devButtonText}>Reset Onboarding Checklist</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.devButton} onPress={() => setShowDebugLogs(true)}>
+              <Icon name="terminal" size={14} color={colors.textMuted} />
+              <Text style={styles.devButtonText}>Debug Logs</Text>
+            </TouchableOpacity>
           </View>
         </AnimatedEntry>
         <MadeWithLove />
+        <DebugLogsScreen visible={showDebugLogs} onClose={() => setShowDebugLogs(false)} />
       </ScrollView>
     </SafeAreaView>
   );

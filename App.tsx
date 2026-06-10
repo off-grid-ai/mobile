@@ -12,16 +12,20 @@ import { NavigationContainer } from '@react-navigation/native';
 import { AppNavigator } from './src/navigation';
 import { useTheme } from './src/theme';
 import { hardwareService, modelManager, authService, ragService, remoteServerManager } from './src/services';
-import logger from './src/utils/logger';
+import logger, { setLogListener } from './src/utils/logger';
 import { useAppStore, useAuthStore, useRemoteServerStore } from './src/stores';
+import { useDebugLogsStore } from './src/stores/debugLogsStore';
+import { loadProFeatures } from './src/bootstrap/loadProFeatures';
 import { hydrateDownloadStore } from './src/services/downloadHydration';
 import { useDownloadListeners } from './src/hooks/useDownloads';
 import { LockScreen } from './src/screens';
 import { useAppState } from './src/hooks/useAppState';
 import { useDownloadStore } from './src/stores/downloadStore';
-import { loadProFeatures } from './src/bootstrap/loadProFeatures';
 
 LogBox.ignoreAllLogs(); // Suppress all logs
+
+// Wire logger → in-app debug viewer (runs before any component mounts)
+setLogListener((entry) => useDebugLogsStore.getState().addLog(entry));
 
 const ensureRemoteServerStoreHydrated = async () => {
   const persistApi = useRemoteServerStore.persist;
@@ -167,7 +171,7 @@ function App() {
       // Initialize RAG database tables
       ragService.ensureReady().catch((err) => logger.error('Failed to initialize RAG service on startup', err));
 
-      // Load pro features if @offgrid/pro is installed and receipt is valid
+      // Load pro features synchronously (screens registered before AppNavigator renders)
       loadProFeatures().catch((err) => logger.error('[App] loadProFeatures failed:', err));
 
       // Show the UI immediately

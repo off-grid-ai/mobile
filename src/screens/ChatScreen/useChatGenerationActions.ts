@@ -17,8 +17,8 @@ import {
   ragService,
   retrievalService,
 } from '../../services';
-import { liteRTService } from '../../services/litert';
 import { getToolExtensions } from '../../services/tools/extensions';
+import { liteRTService } from '../../services/litert';
 import { embeddingService } from '../../services/rag/embedding';
 import { useChatStore, useProjectStore, useRemoteServerStore } from '../../stores';
 import { Message, MediaAttachment, Project, DownloadedModel, RemoteModel, ModelLoadingStrategy, CacheType } from '../../types';
@@ -276,12 +276,24 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   // LiteRT passes tools natively via ConversationConfig — text hint would double-inject.
   // llama.cpp uses text hint only when it lacks native Jinja tool calling support.
   const useTextHint = !isRemote && !isLiteRT && activeTools.length > 0 && !llmService.supportsToolCalling();
+
+  // Collect extension hints (MCP tools etc.) and append when using text-hint mode
+  const extensions = getToolExtensions();
+  const extHints = extensions.map(e => e.getSystemPromptHint()).filter(Boolean);
+  logger.log(`[ChatGen][EXT] ${extensions.length} extension(s) registered, ${extHints.length} with non-empty hints`);
+  if (extHints.length > 0) {
+    logger.log(`[ChatGen][EXT] hints: ${extHints.map((h, i) => `ext[${i}]=${h.length}ch`).join(', ')}`);
+  }
+  const extHintBlock = extHints.join('');
+
   const systemPrompt = applyGemma4ThinkToken(
-    useTextHint ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}` : basePrompt,
+    useTextHint
+      ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}${extHintBlock}`
+      : `${basePrompt}${extHintBlock}`,
     isRemote,
     { isLiteRT, thinkingEnabled: deps.settings.thinkingEnabled },
   );
-  logger.log(`[ChatGen][DEBUG] isRemote=${isRemote}, isLiteRT=${isLiteRT}, useTextHint=${useTextHint}, tools=[${activeTools.join(', ')}], path=${activeTools.length > 0 ? 'withTools' : 'generate'}`);
+  logger.log(`[ChatGen][DEBUG] isRemote=${isRemote}, isLiteRT=${isLiteRT}, useTextHint=${useTextHint}, tools=[${activeTools.join(', ')}], extHints=${extHints.length}`);
   logger.log(`[ChatGen][PROMPT] systemPrompt (${systemPrompt.length}ch): "${systemPrompt.substring(0, 800)}"`);
   const messagesForContext = buildMessagesForContext(targetConversationId, messageText, systemPrompt);
   await prepareContext(setDebugInfo, systemPrompt, messagesForContext);
@@ -371,8 +383,11 @@ export async function regenerateResponseFn(deps: GenerationDeps, call: Regenerat
   const activeTools = enabledTools;
   const basePrompt = await injectRagContext(conversation?.projectId, messageText, rawPrompt);
   const useTextHint = !isRemote && !isLiteRTRegen && activeTools.length > 0 && !llmService.supportsToolCalling();
+  const regenExtHints = getToolExtensions().map(e => e.getSystemPromptHint()).filter(Boolean).join('');
   const systemPrompt = applyGemma4ThinkToken(
-    useTextHint ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}` : basePrompt,
+    useTextHint
+      ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}${regenExtHints}`
+      : `${basePrompt}${regenExtHints}`,
     isRemote,
     { isLiteRT: isLiteRTRegen, thinkingEnabled: deps.settings.thinkingEnabled },
   );
