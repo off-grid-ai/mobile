@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Switch, TouchableOpacity } from 'react-native';
+import { View, Text, Switch, TouchableOpacity, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { AppSheet } from './AppSheet';
 import { useTheme, useThemedStyles } from '../theme';
@@ -36,7 +36,7 @@ export const ToolPickerSheet: React.FC<ToolPickerSheetProps> = ({
       enableDynamicSizing
       title="Tools"
     >
-      <View style={styles.container}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         {showHint && (
           <View style={[styles.hintBanner, { backgroundColor: colors.surface }]}>
             <Icon name="alert-circle" size={16} color={TOOL_WARNING_COLOR} style={styles.hintIcon} />
@@ -78,15 +78,18 @@ export const ToolPickerSheet: React.FC<ToolPickerSheetProps> = ({
         <Text style={styles.hint}>
           Enabling more tools can confuse the model and increases latency on first response.
         </Text>
-      </View>
+      </ScrollView>
     </AppSheet>
   );
 };
 
 const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
   container: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
+    maxHeight: 420,
+  },
+  contentContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xl,
   },
   toolRow: {
     flexDirection: 'row' as const,
