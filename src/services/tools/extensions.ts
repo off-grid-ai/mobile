@@ -3,6 +3,7 @@ import type { ToolCall, ToolResult } from './types';
 export interface ToolExtension {
   id: string;
   getSystemPromptHint(): string;
+  getOpenAISchemas?(): any[];
   parseToolCalls(text: string): ToolCall[];
   stripFromVisibleText(text: string): string;
   canHandle(toolName: string): boolean;

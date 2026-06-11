@@ -343,7 +343,9 @@ function buildLiteRTToolCallHandler(ctx: ToolLoopContext, conversationId: string
     ctx.callbacks?.onToolCallStart?.(name, args as Record<string, any>);
     const toolCall: ToolCall = { id: `native-tc-${Date.now()}`, name, arguments: args as Record<string, any> };
     if (ctx.projectId) (toolCall as any).context = { projectId: ctx.projectId };
-    const result = await executeToolCall(toolCall);
+    const exts = getToolExtensions();
+    const ext = exts.find(e => e.canHandle(name));
+    const result = ext ? await ext.execute(toolCall) : await executeToolCall(toolCall);
     ctx.callbacks?.onToolCallComplete?.(name, result);
     const resultContent = result.error ? `Error: ${result.error}` : result.content;
     const toolCallMsg: Message = { id: `tc-${Date.now()}-${name}`, role: 'assistant', content: '',
@@ -533,7 +535,10 @@ async function forceFinalTextResponse(ctx: ToolLoopContext, state: ToolLoopState
  */
 export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
   const chatStore = useChatStore.getState();
-  const toolSchemas = getToolsAsOpenAISchema(ctx.enabledToolIds);
+  const toolSchemas = [
+    ...getToolsAsOpenAISchema(ctx.enabledToolIds),
+    ...getToolExtensions().flatMap(e => e.getOpenAISchemas?.() ?? []),
+  ];
   const loopMessages = [...ctx.messages];
   let totalToolCalls = 0;
   const state: ToolLoopState = { firstTokenFired: false, thinkingDoneFired: false, streamedContent: '', reasoningContent: '' };

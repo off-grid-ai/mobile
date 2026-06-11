@@ -86,6 +86,77 @@ export const AVAILABLE_TOOLS: ToolDefinition[] = [
       },
     },
   },
+  {
+    id: 'send_email',
+    name: 'send_email',
+    displayName: 'Send Email',
+    description: 'Open the default mail app to send an email',
+    icon: 'mail',
+    parameters: {
+      to: {
+        type: 'string',
+        description: 'Recipient email address',
+        required: true,
+      },
+      subject: {
+        type: 'string',
+        description: 'Email subject',
+      },
+      body: {
+        type: 'string',
+        description: 'Email body',
+      },
+    },
+  },
+  {
+    id: 'create_calendar_event',
+    name: 'create_calendar_event',
+    displayName: 'Create Calendar Event',
+    description: 'Create an event in the device calendar',
+    icon: 'calendar',
+    parameters: {
+      title: {
+        type: 'string',
+        description: 'Event title',
+        required: true,
+      },
+      start_date: {
+        type: 'string',
+        description: 'Start date/time in ISO 8601 format, e.g. 2025-06-01T10:00:00',
+        required: true,
+      },
+      end_date: {
+        type: 'string',
+        description: 'End date/time in ISO 8601 format',
+        required: true,
+      },
+      location: {
+        type: 'string',
+        description: 'Event location',
+      },
+      notes: {
+        type: 'string',
+        description: 'Additional notes for the event',
+      },
+    },
+  },
+  {
+    id: 'read_calendar_events',
+    name: 'read_calendar_events',
+    displayName: 'Read Calendar Events',
+    description: 'Read upcoming events from the device calendar',
+    icon: 'calendar',
+    parameters: {
+      start_date: {
+        type: 'string',
+        description: 'Start of date range in ISO 8601 format. Defaults to today.',
+      },
+      end_date: {
+        type: 'string',
+        description: 'End of date range in ISO 8601 format. Defaults to 7 days from start.',
+      },
+    },
+  },
 ];
 
 export function getToolsAsOpenAISchema(enabledToolIds: string[]) {
