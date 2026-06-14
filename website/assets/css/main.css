@@ -248,6 +248,46 @@ body { font-family: var(--font); color: var(--text-primary); background: var(--b
 .newsletter-status.success { color: var(--accent); }
 .newsletter-status.error { color: #ef4444; }
 
+/* ─── Pro waitlist (inline) ──────────────────────────────────────────────────── */
+.pro-waitlist-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0 8px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated, var(--bg));
+}
+.pro-waitlist-form input[type=email] {
+  flex: 1 1 220px;
+  font-family: var(--font);
+  font-size: 0.95rem;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+}
+.pro-waitlist-form input[type=email]::placeholder { color: var(--text-muted); }
+.pro-waitlist-form input[type=email]:focus { border-color: var(--accent); }
+.pro-waitlist-form button {
+  flex: 0 0 auto;
+  font-size: 0.95rem;
+  padding: 10px 18px;
+}
+.pro-waitlist-meta {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+.pro-waitlist-status { flex-basis: 100%; font-size: 0.8rem; margin: 0; min-height: 1em; }
+.pro-waitlist-status.success { color: var(--accent); }
+.pro-waitlist-status.error { color: #ef4444; }
+
 /* ─── Main Content ─────────────────────────────────────────────────────────── */
 .main {
   flex: 1;

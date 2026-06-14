@@ -2,7 +2,7 @@
 layout: default
 title: Home
 nav_order: 1
-description: Off Grid lets you run powerful AI models directly on your iPhone or Android - no internet, no subscriptions, no cloud. Chat, generate images, use voice, analyse documents. Your data never leaves your device.
+description: Off Grid runs AI on your phone. The model loads into RAM, inference runs on your CPU and GPU, nothing leaves the device. Open source, no account, no cloud.
 ---
 
 <img src="{{ '/assets/cover.png' | relative_url }}" alt="Off Grid - Private AI. No cloud. No compromise." class="hero-cover">
@@ -12,9 +12,9 @@ description: Off Grid lets you run powerful AI models directly on your iPhone or
   <h1>Off Grid</h1>
 </div>
 
-**The Swiss Army Knife of On-Device AI.**
+**Your AI assistant. On your phone. Nowhere else.**
 
-Chat. Generate images. Use tools. See. Listen. All on your phone. All offline. Zero data leaves your device.
+Chat, voice, vision, image generation, tools. The model runs in your phone's RAM. Inference happens on your CPU and GPU. Nothing is sent anywhere.
 
 <div class="hero-buttons">
   <a href="https://apps.apple.com/us/app/off-grid-local-ai/id6759299882?utm_source=offgrid-docs&utm_medium=website&utm_campaign=download" target="_blank" rel="noopener" class="btn btn-green">
@@ -25,45 +25,106 @@ Chat. Generate images. Use tools. See. Listen. All on your phone. All offline. Z
     <svg width="16" height="16" viewBox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1zM47 0C34 6.8 25.3 19.2 25.3 35.3v441.3c0 16.1 8.7 28.5 21.7 35.3l256-256L47 0zm425.6 225.6l-58.9-34.1-65.7 64.5 65.7 64.5 60.1-34.1c17.1-9.8 17.1-34.4-.1-60.8zM104.6 499l280.8-161.2-60.1-60.1L104.6 499z"/></svg>
     Google Play
   </a>
-  <a href="https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3swt3s84k-R0CHRwISaUpExV2~3qUUdQ" target="_blank" rel="noopener" class="btn btn-outline">
+  <a href="https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3w2utgk0w-EDiDZBq6KmSZZwEw5Tkhnw" target="_blank" rel="noopener" class="btn btn-outline">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>
     Join Slack
   </a>
 </div>
 
+100K+ downloads. 4.3 stars on iOS. 2,458+ stars on [GitHub](https://github.com/alichherawalla/off-grid-mobile?utm_source=offgrid-docs&utm_medium=website&utm_campaign=github). Open source, built in public.
+
 ---
 
-## What Off Grid does
+## What it does
 
-| Capability | Details |
+| Capability | What actually happens |
 |---|---|
-| **Text generation** | Llama, Qwen 3, Gemma 3, Phi-4, Mistral and any GGUF model - 15–30 tok/s on flagship devices |
-| **Image generation** | On-device Stable Diffusion - 5–10s on NPU (Snapdragon), Core ML on iOS. 20+ models |
-| **Vision AI** | Point your camera at anything and ask questions. SmolVLM, Qwen3-VL, Gemma 3n |
-| **Voice input** | On-device Whisper speech-to-text. Hold to record, auto-transcribe. No audio leaves your phone |
-| **Tool calling** | Web search, calculator, date/time, device info. Automatic tool loop |
-| **Document analysis** | Attach PDFs, CSVs, code files. Native PDF text extraction on both platforms |
-| **Remote servers** | Connect to Ollama, LM Studio, LocalAI on your home network |
-| **Works offline** | Airplane mode, restricted networks, anywhere |
+| **Chat** | Quantized LLM loaded into RAM. 15-30 tok/s on flagship phones, 8-15 tok/s on mid-range. Works in airplane mode. |
+| **Voice in** | Whisper transcribes audio on-device. Audio never leaves the phone. |
+| **Voice out** | Kokoro TTS runs locally. The assistant speaks the reply back without a network call. |
+| **Vision** | Point your camera at anything and ask a question. SmolVLM, Qwen3-VL, Gemma 3n. |
+| **Image generation** | On-device Stable Diffusion. 5-10s on Snapdragon NPU. Core ML on iPhone. 20+ models in the library. |
+| **Tools** | Web search, calculator, date, device info. The model decides when to call them. |
+| **Documents** | Attach PDFs, CSVs, code files. Native text extraction on iOS and Android. |
+| **MCP** | Connect any MCP server. The same protocol Claude Desktop uses, running through a model on your phone. |
+| **Remote** | Point at Ollama, LM Studio, or LocalAI on your home network when you want a 70B model on your desktop. |
 
 ---
 
-## Why local AI matters
+## The models that work right now
 
-When you run a query on a cloud AI service - ChatGPT, Gemini, Claude - it's logged on a server. Your prompt, the response, the time, your account. Stored indefinitely. Used to train future models. Subject to law enforcement requests. Readable by employees.
+Pick the one that fits your phone and your task. Swap any time. No account.
 
-With Off Grid, none of that applies. The model runs in your phone's memory. Inference happens on your CPU and GPU. Nothing is sent anywhere. Ever.
+| Model | Sizes for phones | Best for |
+|---|---|---|
+| **Gemma 4** (Google, Apr 2026) | E2B, E4B | Multimodal in one model - text, image, video, native audio. E4B is the sweet spot on a 2024+ phone. |
+| **Qwen 3.5** (Alibaba, Feb 2026) | 0.8B, 2B, 4B, 9B | Strongest reasoning at this size. The 4B beats Qwen 3 8B from 2025. |
+| **Phi-4 Mini** (Microsoft) | 3.8B | Tiny and sharp. Runs on a 4GB phone. |
+| **DeepSeek R1 Distill** | 1.5B, 7B | Thinking model. Slower, shows its reasoning. |
+| **Llama 3.2** (Meta) | 1B, 3B | The smallest end. Use when nothing else fits in memory. |
+| **Ministral** (Mistral) | 3B, 8B | European weights, Apache-licensed. |
+
+Bigger models from these families (Qwen 3.6 27B, Gemma 4 26B MoE / 31B dense) need a desktop. Point Off Grid at Ollama on your laptop and use them over your home network.
+
+Any GGUF model works. Bring your own or pick from the in-app library.
 
 ---
 
-## Get started
+## Why the cloud version isn't fine
+
+Every query you send to ChatGPT is logged on a server you don't own. Your prompt, your account, the time, the response. Stored indefinitely. Used to train future models. Readable by employees. Subject to subpoena.
+
+For most people, most of the time, that's fine. For anyone with something worth protecting - a draft of something private, a health question, a client file, a half-formed idea you wouldn't say out loud yet - it isn't.
+
+With Off Grid the model lives in your phone's memory. Inference happens on your CPU and GPU. Nothing is sent anywhere. Verify it yourself: turn on airplane mode, ask it anything, watch it answer.
+
+---
+
+## Pro - alpha access
+
+A version with voice, custom personas, and tool integrations - Slack, calendar, email, any MCP server. All on-device, same as the rest.
+
+- **Voice** - Whisper in, Kokoro out. Hold to talk, listen to the reply. No audio leaves the device.
+- **Personas** - Design assistants with your own prompts, voices, and memory. Switch contexts in a tap.
+- **Integrations** - Read your inbox, draft a reply, schedule a meeting, file a Linear ticket. You approve every action that leaves the phone.
+- **Direct line to the team** - Private channel with the people building it. File a bug, watch it get fixed.
+
+A small group gets it before the public release. Round 2 alpha is **$30 one-time** (Round 1 sold out at the same price). Goes to **$50 one-time** at public launch. No subscription, no surprise pricing.
+
+<div class="hero-buttons">
+  <a href="{{ '/early-access' | relative_url }}" class="btn btn-green">Join the waitlist</a>
+</div>
+
+---
+
+## Fair questions
+
+**How does this actually work on a phone?**
+Off Grid ships [llama.cpp](https://github.com/ggml-org/llama.cpp) inside the app. Quantized models (Q4_K_M is the usual balance) get memory-mapped into RAM and run on your CPU and GPU. iPhone 15 Pro runs a 4B model at around 20-25 tok/s. Snapdragon 8 Gen 3 is similar. Older devices run smaller models slower but still locally.
+
+**Which model should I pick?**
+If you have a 2023 or newer phone with 6GB+ RAM, start with Gemma 3 4B or Qwen 3 4B. If you have 4GB, use Phi-4 Mini or Llama 3.2 3B. Voice and vision work best with Gemma 3n.
+
+**What if you don't ship Pro?**
+Email us before the 12-week mark and you get a full refund. We've shipped the open-source core to 100K downloads already. Pro features are an extension, not a rewrite.
+
+**Who's behind this?**
+[Wednesday Solutions](https://www.wednesday.is?utm_source=offgrid-docs&utm_medium=referral), a product engineering studio. Built in public since early 2026. The code is on [GitHub](https://github.com/alichherawalla/off-grid-mobile?utm_source=offgrid-docs&utm_medium=website&utm_campaign=github) - read it before you pay.
+
+**Will it work on my phone?**
+iPhone 12 or newer with 4GB RAM runs the smaller models. iPhone 14 Pro or newer with 6GB+ runs 4B comfortably. Android: any flagship from 2022 onward, 6GB RAM, Snapdragon 8 Gen 1 or equivalent.
+
+**Is the open-source app enough on its own?**
+Yes. The base app does chat, vision, image generation, voice input, tool calling, documents, and remote servers. Pro adds voice output, personas, and integrations.
+
+---
+
+## Docs and guides
 
 - [Quick Start - first model in 5 minutes]({{ '/quick-start' | relative_url }})
 - [iOS Setup]({{ '/guides/ios-setup' | relative_url }})
 - [Android Setup]({{ '/guides/android-setup' | relative_url }})
 - [Which model should I use?]({{ '/guides/which-model' | relative_url }})
-
-## Guides
 
 **LLMs**
 - [How to Run LLMs Locally on Your Android Phone in 2026]({{ '/guides/run-llms-locally-android' | relative_url }})
@@ -89,8 +150,8 @@ With Off Grid, none of that applies. The model runs in your phone's memory. Infe
 
 ---
 
-## Community
+Questions and feature requests: [Slack](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3w2utgk0w-EDiDZBq6KmSZZwEw5Tkhnw). Source code: [GitHub](https://github.com/alichherawalla/off-grid-mobile?utm_source=offgrid-docs&utm_medium=website&utm_campaign=github).
 
-Questions, feedback, and feature requests - [join the Slack community](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3swt3s84k-R0CHRwISaUpExV2~3qUUdQ).
+Here. It's yours. It runs on your phone and nowhere else.
 
-Source code is open - [star the repo on GitHub](https://github.com/alichherawalla/off-grid-mobile?utm_source=offgrid-docs&utm_medium=website&utm_campaign=github).
+Built by [Wednesday Solutions](https://www.wednesday.is?utm_source=offgrid-docs&utm_medium=referral).

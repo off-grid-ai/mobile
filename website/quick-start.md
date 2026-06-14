@@ -63,6 +63,6 @@ Put your phone in airplane mode. Everything still works.
 
 ## Community
 
-Stuck, or want to share what you're building? [Join the Slack community](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3swt3s84k-R0CHRwISaUpExV2~3qUUdQ).
+Stuck, or want to share what you're building? [Join the Slack community](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3w2utgk0w-EDiDZBq6KmSZZwEw5Tkhnw).
 
 The app is open source - [view it on GitHub](https://github.com/alichherawalla/off-grid-mobile?utm_source=offgrid-docs&utm_medium=website&utm_campaign=github).

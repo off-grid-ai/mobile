@@ -2,7 +2,7 @@
 layout: default
 title: Early Access
 nav_order: 4
-description: Join the waitlist for early access to Off Grid. Be among the first to run the personal AI OS, shape what gets built, and get 6 months free.
+description: Join the waitlist for early access to Off Grid. Be among the first to run the personal AI OS, shape what gets built, and lock in the Round 2 price.
 ---
 
 <div class="early-access-hero">
@@ -18,7 +18,7 @@ description: Join the waitlist for early access to Off Grid. Be among the first 
       <button type="submit" class="ea-submit">Join the waitlist</button>
     </div>
     <div class="ea-form-footer">
-      <p class="ea-pricing-note">6 months free for early access members</p>
+      <p class="ea-pricing-note">Round 2 alpha · $30 one-time · public launch is $50</p>
       <div class="ea-platform-links">
         <span class="ea-platform-label">I'm on</span>
         <button type="button" class="ea-platform-link active" data-platform="ios">iOS</button>
@@ -27,10 +27,10 @@ description: Join the waitlist for early access to Off Grid. Be among the first 
         <input type="hidden" name="platform" id="eaPlatform" value="ios">
       </div>
       <div class="ea-platform-links">
-        <span class="ea-platform-label">I'd prefer</span>
-        <button type="button" class="ea-platform-link active" data-plan="yearly">$199 / year</button>
-        <button type="button" class="ea-platform-link" data-plan="monthly">$19.99 / month</button>
-        <input type="hidden" name="plan" id="eaPlan" value="yearly">
+        <span class="ea-platform-label">Round 2</span>
+        <span class="ea-platform-link active" aria-disabled="true">$30 one-time</span>
+        <span class="ea-platform-label" style="margin-left:8px;opacity:0.7;">(public launch: $50)</span>
+        <input type="hidden" name="plan" id="eaPlan" value="round2_30">
       </div>
     </div>
     <p class="ea-status" id="eaStatus" aria-live="polite"></p>
@@ -54,8 +54,8 @@ description: Join the waitlist for early access to Off Grid. Be among the first 
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
     </div>
     <div>
-      <div class="perk-title">6 months free</div>
-      <div class="perk-desc">When it ships, early access members get 6 months free. After that, <strong>$199/year</strong> or <strong>$19.99/month</strong>. No surprise pricing.</div>
+      <div class="perk-title">$30 lifetime, locked in</div>
+      <div class="perk-desc">Round 2 alpha is <strong>$30 one-time</strong> (Round 1 sold out at the same price). When it ships publicly it goes to <strong>$50 one-time</strong>. No subscription, no surprise pricing.</div>
     </div>
   </div>
   <div class="perk-card">
@@ -115,7 +115,7 @@ It does not send your data anywhere. It does not train on your activity. It is e
 
 A small number of people will run this before it ships publicly. They will see it break, watch it get fixed, and have a real say in what it becomes.
 
-When it ships, it will be $199/year or $19.99/month. Early access members get the first 6 months free. If that deal and that kind of access interests you, put your email in.
+Round 2 alpha is $30 one-time (Round 1 sold out at the same price). When it ships publicly it goes to $50 one-time. If that deal and that kind of access interests you, put your email in.
 
 <script>
   (function() {
@@ -132,7 +132,7 @@ When it ships, it will be $199/year or $19.99/month. Early access members get th
         return;
       }
       var platform = (document.getElementById('eaPlatform') || {}).value || 'ios';
-      var plan = (document.getElementById('eaPlan') || {}).value || 'yearly';
+      var plan = (document.getElementById('eaPlan') || {}).value || 'round2_30';
       if (typeof posthog !== 'undefined') {
         posthog.identify(email, { email: email });
         posthog.capture('early_access_signup', {
