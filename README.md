@@ -25,7 +25,7 @@
 
 <sub><b>BUILT BY</b></sub>
 
-<a href="https://wednesday.is/?utm_source=github&utm_medium=offgrid-readme&utm_content=logo"><img src="src/assets/wednesday-logo.svg" alt="Wednesday Solutions" height="104" /></a>
+<a href="https://wednesday.is/?utm_source=github&utm_medium=offgrid-readme&utm_content=logo"><picture><source media="(prefers-color-scheme: dark)" srcset="src/assets/wednesday-logo-dark.svg" /><img src="src/assets/wednesday-logo.svg" alt="Wednesday Solutions" height="160" /></picture></a>
 
 </div>
 
