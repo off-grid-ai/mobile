@@ -29,8 +29,6 @@
 
 </div>
 
-Off Grid is built by [**Wednesday Solutions**](https://wednesday.is/?utm_source=github&utm_medium=offgrid-readme&utm_content=body-link).
-
 ---
 
 <br />
