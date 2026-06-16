@@ -1,7 +1,6 @@
 ---
 layout: default
 title: Early Access
-nav_order: 4
 description: Join the waitlist for early access to Off Grid. Be among the first to run the personal AI OS, shape what gets built, and lock in the Round 2 price.
 ---
 
