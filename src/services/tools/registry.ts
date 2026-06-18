@@ -112,7 +112,7 @@ export const AVAILABLE_TOOLS: ToolDefinition[] = [
     id: 'create_calendar_event',
     name: 'create_calendar_event',
     displayName: 'Create Calendar Event',
-    description: 'Create an event in the device calendar',
+    description: 'Add an event to the device calendar. Use whenever the user asks to schedule, add, book, or set a reminder for something at a date or time. Times are device local time.',
     icon: 'calendar',
     parameters: {
       title: {
@@ -122,13 +122,12 @@ export const AVAILABLE_TOOLS: ToolDefinition[] = [
       },
       start_date: {
         type: 'string',
-        description: 'Start date/time in ISO 8601 format, e.g. 2025-06-01T10:00:00',
+        description: 'Start date/time in ISO 8601 local format, e.g. 2025-06-01T10:00:00. Resolve relative dates ("tomorrow", "next Friday at 3pm") against the current date and time given in the system prompt.',
         required: true,
       },
       end_date: {
         type: 'string',
-        description: 'End date/time in ISO 8601 format',
-        required: true,
+        description: 'End date/time in ISO 8601 local format. Optional - if omitted, the event defaults to one hour after the start.',
       },
       location: {
         type: 'string',

@@ -385,13 +385,52 @@ async function callLiteRTForLoop(
 
 const TOOL_BEHAVIOR_GUIDANCE = '\n\nMake good use of the tools available to you. If you are uncertain or lack current information, use the appropriate tool rather than guessing. Never refuse or say you cannot help when a tool is available. For multiple distinct items, make a separate tool call for each. Call tools silently — do not announce them first.';
 
-function augmentSystemPromptForTools(messages: Message[]): Message[] {
+/** Tools that need precise time-of-day to resolve relative phrases like "in half an hour". */
+const TIME_SENSITIVE_TOOL_IDS = ['create_calendar_event', 'read_calendar_events'];
+
+/**
+ * Build a current-date(/time) context line for the system prompt. On-device models
+ * have no built-in clock, so without this they cannot resolve relative dates
+ * ("tomorrow", "next Friday") into the ISO timestamps the calendar tools need.
+ *
+ * `precise` controls the prompt-cache tradeoff:
+ *  - true  -> full minute/second timestamp, so "in half an hour" resolves correctly.
+ *    The timestamp changes every turn, which breaks llama.rn prefix-cache reuse from
+ *    this point on. Only used when a time-sensitive tool (calendar) is enabled.
+ *  - false -> date only. Stable for the whole day, so the prompt cache is preserved;
+ *    day-relative phrasing still works, but sub-day phrasing does not.
+ *
+ * Computed at send-time (not module load) so it stays current across a session.
+ */
+function buildDateTimeContext(precise: boolean): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  let dayOfWeek = '';
+  let tz = '';
+  try {
+    dayOfWeek = now.toLocaleDateString(undefined, { weekday: 'long' });
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    // toLocaleDateString/Intl can be unavailable on some JS engines; date alone still helps.
+  }
+  const dayPart = dayOfWeek ? ` Today is ${dayOfWeek}.` : '';
+  const tzPart = tz ? ` Timezone: ${tz}.` : '';
+  if (precise) {
+    const local = `${dateStr}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    return `\n\nThe current date and time is ${local} (device local time, format YYYY-MM-DDTHH:MM:SS).${dayPart}${tzPart} When the user refers to relative dates or times such as "today", "tomorrow", "next Friday", or "in half an hour", resolve them against this current date and time.`;
+  }
+  return `\n\nThe current date is ${dateStr} (device local date, format YYYY-MM-DD).${dayPart}${tzPart} When the user refers to relative dates such as "today", "tomorrow", or "next Friday", resolve them against this current date.`;
+}
+
+function augmentSystemPromptForTools(messages: Message[], enabledToolIds: string[] = []): Message[] {
   const sysIdx = messages.findIndex(m => m.role === 'system');
   if (sysIdx === -1) return messages;
   const sys = messages[sysIdx];
   const existing = typeof sys.content === 'string' ? sys.content : '';
   const extHints = getToolExtensions().map(e => e.getSystemPromptHint()).filter(Boolean).join('');
-  const updated = { ...sys, content: existing + TOOL_BEHAVIOR_GUIDANCE + extHints };
+  const precise = enabledToolIds.some(id => TIME_SENSITIVE_TOOL_IDS.includes(id));
+  const updated = { ...sys, content: existing + TOOL_BEHAVIOR_GUIDANCE + buildDateTimeContext(precise) + extHints };
   return [...messages.slice(0, sysIdx), updated, ...messages.slice(sysIdx + 1)];
 }
 
@@ -409,7 +448,7 @@ async function callLLMWithRetry(
   // We shallow-copy messages to avoid mutating the caller's array.
   const exts = getToolExtensions();
   const extCount = exts.reduce((n, e) => n + e.enabledToolCount(), 0);
-  const augmentedMessages = (tools.length > 0 || extCount > 0) ? augmentSystemPromptForTools(messages) : messages;
+  const augmentedMessages = (tools.length > 0 || extCount > 0) ? augmentSystemPromptForTools(messages, ctx?.enabledToolIds) : messages;
 
   if (isLiteRTActive() && conversationId) {
     return callLiteRTForLoop(conversationId, augmentedMessages, { tools, onStream, ctx });

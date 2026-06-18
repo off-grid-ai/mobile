@@ -54,14 +54,12 @@ async function dispatchTool(call: ToolCall): Promise<string> {
     case 'create_calendar_event': {
       const title = requireString(call, 'title');
       const startDate = requireString(call, 'start_date');
-      const endDate = requireString(call, 'end_date');
       if (!title) throw new Error('Missing required parameter: title');
       if (!startDate) throw new Error('Missing required parameter: start_date');
-      if (!endDate) throw new Error('Missing required parameter: end_date');
       return handleCreateCalendarEvent({
         title,
         startDate,
-        endDate,
+        endDate: call.arguments.end_date as string | undefined,
         location: call.arguments.location as string | undefined,
         notes: call.arguments.notes as string | undefined,
       });
@@ -439,13 +437,17 @@ async function ensureCalendarPermission(readonly: boolean): Promise<void> {
 }
 
 async function handleCreateCalendarEvent(
-  event: { title: string; startDate: string; endDate: string; location?: string; notes?: string },
+  event: { title: string; startDate: string; endDate?: string; location?: string; notes?: string },
 ): Promise<string> {
   const { title, startDate, endDate, location, notes } = event;
   const start = new Date(startDate);
-  const end = new Date(endDate);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    throw new TypeError('Invalid date format. Please provide valid ISO 8601 dates.');
+  if (Number.isNaN(start.getTime())) {
+    throw new TypeError('Invalid start_date. Please provide a valid ISO 8601 date, e.g. 2025-06-01T10:00:00.');
+  }
+  // end_date is optional; default to one hour after the start when omitted.
+  const end = endDate ? new Date(endDate) : new Date(start.getTime() + 60 * 60 * 1000);
+  if (Number.isNaN(end.getTime())) {
+    throw new TypeError('Invalid end_date. Please provide a valid ISO 8601 date, e.g. 2025-06-01T11:00:00.');
   }
   // requestPermissions(false) asks for read/write on Android; iOS is always read/write.
   await ensureCalendarPermission(false);
@@ -457,7 +459,7 @@ async function handleCreateCalendarEvent(
     ...(notes ? { notes, description: notes } : {}),
   });
   const locationSuffix = location ? ` at ${location}` : '';
-  return `Calendar event "${title}" saved from ${startDate} to ${endDate}${locationSuffix}.`;
+  return `Calendar event "${title}" saved from ${start.toLocaleString()} to ${end.toLocaleString()}${locationSuffix}.`;
 }
 
 async function handleReadCalendarEvents(startDateStr?: string, endDateStr?: string): Promise<string> {

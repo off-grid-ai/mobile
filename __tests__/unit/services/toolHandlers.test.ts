@@ -324,7 +324,7 @@ describe('calendar handlers', () => {
         name: 'create_calendar_event',
         arguments: { title: 'Meeting', start_date: 'not-a-date', end_date: '2025-01-01T11:00:00Z' },
       });
-      expect(result.error).toContain('Invalid date format');
+      expect(result.error).toContain('Invalid start_date');
     });
 
     it('creates event and returns success message', async () => {

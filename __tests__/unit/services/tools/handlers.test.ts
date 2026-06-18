@@ -624,7 +624,7 @@ describe('Tool Handlers', () => {
         expect(mockSaveEvent).not.toHaveBeenCalled();
       });
 
-      it('returns an error for invalid dates', async () => {
+      it('returns an error for an invalid start date', async () => {
         mockRequestPermissions.mockResolvedValue('authorized');
 
         const result = await runTool('create_calendar_event', {
@@ -633,8 +633,27 @@ describe('Tool Handlers', () => {
           end_date: 'also-bad',
         });
 
-        expect(result.error).toContain('Invalid date format');
+        expect(result.error).toContain('Invalid start_date');
         expect(mockSaveEvent).not.toHaveBeenCalled();
+      });
+
+      it('defaults end_date to one hour after start when omitted', async () => {
+        mockRequestPermissions.mockResolvedValue('authorized');
+        mockSaveEvent.mockResolvedValue('event-id-3');
+
+        const result = await runTool('create_calendar_event', {
+          title: 'Lunch',
+          start_date: '2026-07-01T13:00:00.000Z',
+        });
+
+        expect(result.error).toBeUndefined();
+        expect(mockSaveEvent).toHaveBeenCalledWith(
+          'Lunch',
+          expect.objectContaining({
+            startDate: '2026-07-01T13:00:00.000Z',
+            endDate: '2026-07-01T14:00:00.000Z',
+          }),
+        );
       });
 
       it('omits optional fields when not provided', async () => {
