@@ -16,6 +16,7 @@ import logger, { setLogListener } from './src/utils/logger';
 import { useAppStore, useAuthStore, useRemoteServerStore } from './src/stores';
 import { useDebugLogsStore } from './src/stores/debugLogsStore';
 import { loadProFeatures } from './src/bootstrap/loadProFeatures';
+import { configureRevenueCat, checkProStatus } from './src/services/proLicenseService';
 import { hydrateDownloadStore } from './src/services/downloadHydration';
 import { useDownloadListeners } from './src/hooks/useDownloads';
 import { LockScreen } from './src/screens';
@@ -171,8 +172,23 @@ function App() {
       // Initialize RAG database tables
       ragService.ensureReady().catch((err) => logger.error('Failed to initialize RAG service on startup', err));
 
-      // Load pro features synchronously (screens registered before AppNavigator renders)
-      loadProFeatures().catch((err) => logger.error('[App] loadProFeatures failed:', err));
+      // Configure RevenueCat and read the cached entitlement before Pro features load.
+      // configureRevenueCat is sync; checkProStatus reads the keychain cache immediately
+      // and fires a background RC network sync so the next launch stays fresh.
+      //
+      // Pro is optional: a failure here (missing native module, keychain locked,
+      // bad RC config) must never abort app init or hang the splash screen, so the
+      // whole block is isolated and only logs on error.
+      try {
+        configureRevenueCat();
+        const isPro = await checkProStatus();
+
+        // Load pro features — only activates if the keychain entitlement is set.
+        // Reuse the entitlement read above to avoid a second keychain round-trip.
+        await loadProFeatures(isPro);
+      } catch (proError) {
+        logger.error('[App] Pro initialization failed, continuing without Pro:', proError);
+      }
 
       // Show the UI immediately
       setIsInitializing(false);
