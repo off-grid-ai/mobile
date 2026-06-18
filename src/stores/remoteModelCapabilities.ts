@@ -43,10 +43,25 @@ function extractOllamaCapabilities(data: Record<string, unknown>): RemoteModelIn
   let contextLength = 4096;
   let supportsVision = false;
 
+  // Newer Ollama versions expose a top-level `capabilities` array (e.g. ["vision", "tools"]).
+  // Gemma 4 and similar models use this field instead of model_info keys.
+  let supportsToolCalling: boolean | undefined;
+  if (Array.isArray(data.capabilities)) {
+    const caps = data.capabilities as unknown[];
+    supportsVision = caps.includes('vision');
+    supportsToolCalling = caps.includes('tools');
+  }
+
   if (data.model_info && typeof data.model_info === 'object') {
     const parsed = parseModelInfoKeys(data.model_info as Record<string, unknown>);
     if (parsed.contextLength > 0) contextLength = parsed.contextLength;
-    supportsVision = parsed.supportsVision;
+    if (!supportsVision) supportsVision = parsed.supportsVision;
+  }
+
+  // projector_info is present for multimodal models when capabilities array is missing.
+  if (!supportsVision && data.projector_info && typeof data.projector_info === 'object') {
+    const projectorKeys = Object.keys(data.projector_info as Record<string, unknown>);
+    supportsVision = projectorKeys.some(k => k.includes('vision') || k.includes('clip'));
   }
 
   if (contextLength === 4096 && typeof data.parameters === 'string') {
@@ -63,7 +78,7 @@ function extractOllamaCapabilities(data: Record<string, unknown>): RemoteModelIn
     /\.Think|\.Thinking|\.IsThinkSet/.test(template) ||
     /^RENDERER\s/m.test(modelfile);
 
-  return { contextLength, supportsVision, supportsThinking };
+  return { contextLength, supportsVision, supportsToolCalling, supportsThinking };
 }
 
 /**
