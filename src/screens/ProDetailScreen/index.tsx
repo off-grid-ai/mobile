@@ -1,13 +1,14 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Linking, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import LinearGradient from 'react-native-linear-gradient';
 import { useTheme, useThemedStyles } from '../../theme';
 import type { ThemeColors, ThemeShadows } from '../../theme';
 import { SPACING, TYPOGRAPHY } from '../../constants';
-import { PRO_URL } from '../../utils/proPrompt';
 import { useAppStore } from '../../stores';
+import { resetProIdentityForTesting } from '../../services/proLicenseService';
+import { ProUnlockModal } from './ProUnlockModal';
 
 const INTEGRATIONS = [
   { icon: 'mic', title: 'Voice', desc: 'Local speech-to-text\nprocessing.' },
@@ -16,16 +17,17 @@ const INTEGRATIONS = [
   { icon: 'message-square', title: 'Messaging', desc: 'Slack,\nTelegram & more.' },
 ];
 
-
 export const ProDetailScreen: React.FC = () => {
   const { colors, isDark } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const setHasRegisteredPro = useAppStore((s) => s.setHasRegisteredPro);
+  const hasRegisteredPro = useAppStore((s) => s.hasRegisteredPro);
+  const [emailModalVisible, setEmailModalVisible] = useState(false);
 
-  const handleCTA = () => {
-    setHasRegisteredPro(true);
-    Linking.openURL(PRO_URL);
-  };
+  const openEmailModal = () => setEmailModalVisible(true);
+
+  // The modal handles the restart via RNRestart after showing the success state.
+  // Nothing to do here — onUnlocked is a signal that purchase completed.
+  const handleUnlocked = () => {};
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -49,9 +51,19 @@ export const ProDetailScreen: React.FC = () => {
             </View>
             <Text style={styles.logoText}>Off Grid Pro</Text>
           </View>
-          <TouchableOpacity style={styles.getProButton} onPress={handleCTA}>
-            <Text style={styles.getProButtonText}>Get Pro</Text>
-          </TouchableOpacity>
+          {hasRegisteredPro ? (
+            <View style={styles.proActiveBadge}>
+              <Icon name="check" size={12} color="#FFFFFF" />
+              <Text style={styles.proActiveBadgeText}>Pro Active</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.getProButton}
+              onPress={openEmailModal}
+            >
+              <Text style={styles.getProButtonText}>Get Pro</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Hero */}
@@ -134,12 +146,48 @@ export const ProDetailScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* CTA */}
-        <TouchableOpacity style={styles.ctaButton} onPress={handleCTA}>
-          <Text style={styles.ctaText}>I am in 🔥</Text>
-         </TouchableOpacity>
+        {/* CTA / Pro active */}
+        {hasRegisteredPro ? (
+          <>
+            <View style={styles.proActiveCard}>
+              <Icon name="check-circle" size={20} color={colors.primary} />
+              <Text style={styles.proActiveText}>Pro is active on this account.</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.restoreButton}
+              onPress={async () => {
+                await resetProIdentityForTesting();
+                Alert.alert('Reset done', 'RC identity cleared. Restart the app to test the purchase flow again.');
+              }}
+            >
+              <Text style={styles.restoreText}>Reset Pro identity</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={styles.ctaButton}
+              onPress={openEmailModal}
+            >
+              <Text style={styles.ctaText}>Get Pro</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.restoreButton}
+              onPress={openEmailModal}
+            >
+              <Text style={styles.restoreText}>Already paid? Unlock with email</Text>
+            </TouchableOpacity>
+          </>
+        )}
 
       </ScrollView>
+
+      <ProUnlockModal
+        visible={emailModalVisible}
+        onClose={() => setEmailModalVisible(false)}
+        onUnlocked={handleUnlocked}
+      />
     </SafeAreaView>
   );
 };
@@ -183,6 +231,16 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     borderRadius: 20,
   },
   getProButtonText: { ...TYPOGRAPHY.bodySmall, color: '#FFFFFF' },
+  proActiveBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
+    backgroundColor: colors.primary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+  },
+  proActiveBadgeText: { ...TYPOGRAPHY.bodySmall, color: '#FFFFFF' },
 
   // Hero
   hero: {
@@ -348,19 +406,48 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
   // CTA
   ctaButton: {
     marginHorizontal: SPACING.xl,
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.md,
     backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: SPACING.lg,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    gap: SPACING.sm,
   },
   ctaText: {
     ...TYPOGRAPHY.body,
     color: '#FFFFFF',
     letterSpacing: 0.5,
   },
+  restoreButton: {
+    marginHorizontal: SPACING.xl,
+    marginBottom: SPACING.xl,
+    paddingVertical: SPACING.md,
+    alignItems: 'center' as const,
+  },
+  restoreText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: colors.textSecondary,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
 
+  // Pro active state
+  proActiveCard: {
+    marginHorizontal: SPACING.xl,
+    marginBottom: SPACING.xl,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: SPACING.sm,
+    paddingVertical: SPACING.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  proActiveText: {
+    ...TYPOGRAPHY.body,
+    color: colors.primary,
+  },
 });

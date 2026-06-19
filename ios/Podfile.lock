@@ -98,6 +98,11 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
+  - PurchasesHybridCommon (18.14.1):
+    - RevenueCat (= 5.78.0)
+  - PurchasesHybridCommonUI (18.14.1):
+    - PurchasesHybridCommon (= 18.14.1)
+    - RevenueCatUI (= 5.78.0)
   - RCT-Folly (2024.11.18.00):
     - boost
     - DoubleConversion
@@ -2797,6 +2802,11 @@ PODS:
     - React-perflogger (= 0.83.1)
     - React-utils (= 0.83.1)
     - SocketRocket
+  - RevenueCat (5.78.0)
+  - RevenueCatUI (5.78.0):
+    - RevenueCat (= 5.78.0)
+  - RNCalendarEvents (2.2.0):
+    - React
   - RNCAsyncStorage (2.2.0):
     - boost
     - DoubleConversion
@@ -2885,6 +2895,12 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
+  - RNPaywalls (10.3.0):
+    - PurchasesHybridCommonUI (= 18.14.1)
+    - React-Core
+  - RNPurchases (10.3.0):
+    - PurchasesHybridCommon (= 18.14.1)
+    - React-Core
   - RNReactNativeHapticFeedback (2.3.3):
     - boost
     - DoubleConversion
@@ -3368,11 +3384,14 @@ DEPENDENCIES:
   - ReactAppDependencyProvider (from `build/generated/ios/ReactAppDependencyProvider`)
   - ReactCodegen (from `build/generated/ios/ReactCodegen`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
+  - RNCalendarEvents (from `../node_modules/react-native-calendar-events`)
   - "RNCAsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
   - RNDeviceInfo (from `../node_modules/react-native-device-info`)
   - RNFS (from `../node_modules/react-native-fs`)
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNKeychain (from `../node_modules/react-native-keychain`)
+  - RNPaywalls (from `../node_modules/react-native-purchases-ui`)
+  - RNPurchases (from `../node_modules/react-native-purchases`)
   - RNReactNativeHapticFeedback (from `../node_modules/react-native-haptic-feedback`)
   - RNReanimated (from `../node_modules/react-native-reanimated`)
   - RNScreens (from `../node_modules/react-native-screens`)
@@ -3387,6 +3406,10 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - lottie-ios
+    - PurchasesHybridCommon
+    - PurchasesHybridCommonUI
+    - RevenueCat
+    - RevenueCatUI
     - SocketRocket
     - SSZipArchive
 
@@ -3566,6 +3589,8 @@ EXTERNAL SOURCES:
     :path: build/generated/ios/ReactCodegen
   ReactCommon:
     :path: "../node_modules/react-native/ReactCommon"
+  RNCalendarEvents:
+    :path: "../node_modules/react-native-calendar-events"
   RNCAsyncStorage:
     :path: "../node_modules/@react-native-async-storage/async-storage"
   RNDeviceInfo:
@@ -3576,6 +3601,10 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-gesture-handler"
   RNKeychain:
     :path: "../node_modules/react-native-keychain"
+  RNPaywalls:
+    :path: "../node_modules/react-native-purchases-ui"
+  RNPurchases:
+    :path: "../node_modules/react-native-purchases"
   RNReactNativeHapticFeedback:
     :path: "../node_modules/react-native-haptic-feedback"
   RNReanimated:
@@ -3603,11 +3632,13 @@ SPEC CHECKSUMS:
   FBLazyVector: 309703e71d3f2f1ed7dc7889d58309c9d77a95a4
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
-  hermes-engine: 4d40ce008f57c9348a66614a3167581aa861e379
+  hermes-engine: 8c6be38f94b3bf8b864981980e64e55f08e467ec
   llama-rn: 796fa53f37f89e2c77cd6c462ad1172ee96d4c80
   lottie-ios: a881093fab623c467d3bce374367755c272bdd59
   lottie-react-native: 691b8363e8c591fb78a78254ff2517258891456b
   op-sqlite: bafff369cecaee4fe65c89eec47deaba26f2db95
+  PurchasesHybridCommon: 825e4e748b62c919bc4cb4032b0d1e452409bd74
+  PurchasesHybridCommonUI: 536abdfc64b82adcbb9ba352630722a4a1270571
   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: a41bbdd9af30bf2e5715796b313e44ec43eefff1
   RCTRequired: 7be34aabb0b77c3cefe644528df0fa0afad4e4d0
@@ -3684,11 +3715,16 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 0eb286cc274abb059ee601b862ebddac2e681d01
   ReactCodegen: 3d48510bcef445f6403c0004047d4d9cbb915435
   ReactCommon: ac934cb340aee91282ecd6f273a26d24d4c55cae
+  RevenueCat: f3641992451c1426da8d8d1466cec3bbdb765962
+  RevenueCatUI: 32998f100fe73f1d0172df7eef4f0dd1bc781a05
+  RNCalendarEvents: f90f73666b6bcbb3cc8a491ffbb5e48c0db3de37
   RNCAsyncStorage: 29f0230e1a25f36c20b05f65e2eb8958d6526e82
   RNDeviceInfo: 36d7f232bfe7c9b5c494cb7793230424ed32c388
   RNFS: 89de7d7f4c0f6bafa05343c578f61118c8282ed8
   RNGestureHandler: cd4be101cfa17ea6bbd438710caa02e286a84381
   RNKeychain: a2c134ab796272c3d605e035ab727591000b30f3
+  RNPaywalls: f125e0b623a8ccadbe45e2815ac024bbf9053bb9
+  RNPurchases: ebcfb4effc608048bf2481a413b0bcaa2b6677f7
   RNReactNativeHapticFeedback: be4f1b4bf0398c30b59b76ed92ecb0a2ff3a69c6
   RNReanimated: 292cd58688552a22b3fc1cefcfbc49b336dfed68
   RNScreens: 714e10b6b554f7dc7ad9f78dcf36dc8e3fc73415
@@ -3701,6 +3737,6 @@ SPEC CHECKSUMS:
   whisper-rn: 7566faf9b7d78e39ab9fc634cb90fdee81177793
   Yoga: 5456bb010373068fc92221140921b09d126b116e
 
-PODFILE CHECKSUM: 31818a1f7d1207c486dba2e42df373cf65ace073
+PODFILE CHECKSUM: 88f0d247acf3f66fc1ac0eb9612471f79e7f0cce
 
 COCOAPODS: 1.16.2
