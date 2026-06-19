@@ -10,15 +10,15 @@ import { createStyles } from './styles';
 import { ActiveDownloadCard, CompletedDownloadCard, formatBytes, type DownloadItem } from './items';
 import { useDownloadManager } from './useDownloadManager';
 
-type FilterType = 'all' | 'text' | 'vision' | 'image' | 'tts' | 'stt';
+type FilterType = 'all' | 'text' | 'vision' | 'image' | 'voice';
 
 const FILTERS: { id: FilterType; label: string }[] = [
   { id: 'all',    label: 'All' },
   { id: 'text',   label: 'Text' },
   { id: 'vision', label: 'Vision' },
   { id: 'image',  label: 'Image Gen' },
-  { id: 'tts',    label: 'Text to Speech' },
-  { id: 'stt',    label: 'Speech to Text' },
+  // Voice covers both text-to-speech and speech-to-text models.
+  { id: 'voice',  label: 'Voice Models' },
 ];
 
 function matchesFilter(item: DownloadItem, filter: FilterType): boolean {
@@ -26,8 +26,7 @@ function matchesFilter(item: DownloadItem, filter: FilterType): boolean {
   if (filter === 'vision') return item.modelType === 'text' && !!item.isVisionModel;
   if (filter === 'text')   return item.modelType === 'text' && !item.isVisionModel;
   if (filter === 'image')  return item.modelType === 'image';
-  if (filter === 'tts')    return item.modelType === 'tts';
-  if (filter === 'stt')    return item.modelType === 'stt';
+  if (filter === 'voice')  return item.modelType === 'tts' || item.modelType === 'stt';
   return true;
 }
 

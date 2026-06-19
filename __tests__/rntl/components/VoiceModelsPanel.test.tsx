@@ -33,18 +33,16 @@ jest.mock('@offgrid/core/components/CustomAlert', () => {
 });
 
 jest.mock('@offgrid/core/components', () => {
-  const { View, Text, TouchableOpacity } = require('react-native');
+  const { Text, TouchableOpacity } = require('react-native');
   return {
-    ModelCard: ({ model, isDownloaded, isActive, onDownload, onSelect, onDelete, testID }: any) => (
-      <View testID={testID}>
+    ModelCard: ({ model, isDownloaded, onPress, onDownload, onDelete, testID }: any) => (
+      <TouchableOpacity testID={testID} onPress={onPress} disabled={!onPress}>
         <Text testID={`${testID}-name`}>{model.name}</Text>
         <Text testID={`${testID}-author`}>{model.author}</Text>
-        {isActive && <Text testID={`${testID}-active`}>active</Text>}
         {isDownloaded && <Text testID={`${testID}-downloaded`}>downloaded</Text>}
         {onDownload && <TouchableOpacity testID={`${testID}-download`} onPress={onDownload}><Text>Download</Text></TouchableOpacity>}
-        {onSelect && <TouchableOpacity testID={`${testID}-select`} onPress={onSelect}><Text>Use</Text></TouchableOpacity>}
         {onDelete && <TouchableOpacity testID={`${testID}-delete`} onPress={onDelete}><Text>Delete</Text></TouchableOpacity>}
-      </View>
+      </TouchableOpacity>
     ),
   };
 });
@@ -117,9 +115,9 @@ describe('VoiceModelsPanel', () => {
     expect(getByText(/nothing is sent anywhere/)).toBeTruthy();
   });
 
-  it('marks the active, downloaded engine as active', async () => {
+  it('shows a downloaded engine as downloaded', async () => {
     const { getByTestId } = await renderPanel();
-    expect(getByTestId('voice-model-card-0-active')).toBeTruthy();
+    expect(getByTestId('voice-model-card-0-downloaded')).toBeTruthy();
   });
 
   it('downloads a not-downloaded engine by selecting it then downloading', async () => {
@@ -135,13 +133,13 @@ describe('VoiceModelsPanel', () => {
     });
   });
 
-  it('activates a downloaded, non-active engine via its select action', async () => {
+  it('activates a downloaded, non-active engine when its card is tapped', async () => {
     // Make outetts downloaded but kokoro active.
     mockEngines.outetts.isFullyDownloaded = () => true;
     const { getByTestId } = await renderPanel();
 
     await act(async () => {
-      fireEvent.press(getByTestId('voice-model-card-1-select'));
+      fireEvent.press(getByTestId('voice-model-card-1'));
     });
 
     await waitFor(() => {
@@ -150,13 +148,5 @@ describe('VoiceModelsPanel', () => {
     });
     // restore
     mockEngines.outetts.isFullyDownloaded = () => false;
-  });
-
-  it('links to the full TTS settings screen', async () => {
-    const { getByTestId } = await renderPanel();
-
-    fireEvent.press(getByTestId('voice-open-tts-settings'));
-
-    expect(mockNavigate).toHaveBeenCalledWith('TTSSettings');
   });
 });
