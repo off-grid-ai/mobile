@@ -193,7 +193,11 @@ jest.mock('react-native-executorch', () => ({
     stream: jest.fn(() => Promise.resolve()),
     streamStop: jest.fn(),
   })),
-  KOKORO_MEDIUM: 'kokoro-medium',
+  KOKORO_MEDIUM: {
+    modelName: 'kokoro-medium',
+    durationPredictorSource: 'https://example.test/kokoro/medium/duration_predictor.pte',
+    synthesizerSource: 'https://example.test/kokoro/medium/synthesizer.pte',
+  },
   KOKORO_VOICE_AF_HEART: mockVoiceConfig,
   KOKORO_VOICE_AF_RIVER: mockVoiceConfig,
   KOKORO_VOICE_AF_SARAH: mockVoiceConfig,
@@ -203,6 +207,20 @@ jest.mock('react-native-executorch', () => ({
   KOKORO_VOICE_BF_EMMA: mockVoiceConfig,
   KOKORO_VOICE_BM_DANIEL: mockVoiceConfig,
 }));
+
+// react-native-executorch-bare-resource-fetcher mock.
+// Default: nothing on disk. Tests override listDownloadedModels per case.
+jest.mock(
+  'react-native-executorch-bare-resource-fetcher',
+  () => ({
+    BareResourceFetcher: {
+      listDownloadedModels: jest.fn(async () => [] as string[]),
+      listDownloadedFiles: jest.fn(async () => [] as string[]),
+      deleteResources: jest.fn(async () => {}),
+    },
+  }),
+  { virtual: true },
+);
 
 // react-native-fs mock
 jest.mock('react-native-fs', () => ({
