@@ -2,6 +2,10 @@
   "extends": "@react-native/typescript-config",
   "compilerOptions": {
     "types": ["jest", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@offgrid/core/*": ["src/*"]
+    },
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["**/node_modules", "**/Pods", "pro/**"]
