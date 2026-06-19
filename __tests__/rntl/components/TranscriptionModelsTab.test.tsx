@@ -16,8 +16,8 @@ jest.mock('../../../src/services', () => ({
   ],
 }));
 
-const mockSearchWhisperRepos = jest.fn(async () => [] as any[]);
-const mockGetWhisperFiles = jest.fn(async () => [] as any[]);
+const mockSearchWhisperRepos = jest.fn((..._a: any[]) => Promise.resolve([] as any[]));
+const mockGetWhisperFiles = jest.fn((..._a: any[]) => Promise.resolve([] as any[]));
 jest.mock('../../../src/services/huggingface', () => ({
   huggingFaceService: {
     searchWhisperRepos: (...a: any[]) => mockSearchWhisperRepos(...a),
