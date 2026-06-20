@@ -17,7 +17,7 @@ import { useTheme, useThemedStyles } from '../../theme';
 import { createStyles } from './styles';
 import { useChatScreen } from './useChatScreen';
 import { MessageRenderer } from './MessageRenderer';
-import { NoModelScreen, LoadingScreen, ChatHeader } from './ChatScreenComponents';
+import { NoModelScreen, ChatHeader } from './ChatScreenComponents';
 import { ChatModalSection } from './ChatModalSection';
 import { ChatMessageArea } from './ChatMessageArea';
 
@@ -171,22 +171,9 @@ export const ChatScreen: React.FC = () => {
     );
   }
 
-  if (chat.isModelLoading) {
-    const sizeSource = chat.loadingModel ?? chat.activeModel;
-    const modelName = chat.loadingModel?.name || chat.activeModelName || 'Unknown';
-    return (
-      <>
-        <LoadingScreen
-          styles={styles} colors={colors}
-          navigation={chat.navigation}
-          loadingModelName={modelName}
-          modelSize={sizeSource ? chat.hardwareService.formatModelSize(sizeSource) : ''}
-          hasVision={!!((chat.loadingModel?.engine === 'llama' && chat.loadingModel.mmProjPath) || (chat.activeModel?.engine === 'llama' && chat.activeModel.mmProjPath))}
-        />
-        {alertEl}
-      </>
-    );
-  }
+  // Model loading is shown inline (a "Loading model" bar above the input via
+  // ChatMessageArea), so the chat stays visible while a text/image model loads —
+  // no full-screen takeover.
 
   const handleScroll = (event: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;

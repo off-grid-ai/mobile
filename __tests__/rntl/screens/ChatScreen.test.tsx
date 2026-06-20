@@ -4187,14 +4187,13 @@ describe('ChatScreen', () => {
         flashAttn: true,
         cacheType: 'q8_0' as const,
       };
+      const mergedSettings = { ...useAppStore.getState().settings, ...settings };
       useAppStore.setState({
         activeModelId: model.id,
         downloadedModels: [model],
-        settings: {
-          ...useAppStore.getState().settings,
-          ...settings,
-        },
-        loadedSettings: { ...settings },
+        settings: mergedSettings,
+        // loadedSettings must match every compared key, else hasPendingSettings is true.
+        loadedSettings: { ...mergedSettings },
       });
       useChatStore.setState({
         conversations: [createConversation({ modelId: model.id })],
