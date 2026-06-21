@@ -31,7 +31,6 @@ import {
   DocumentPreviewScreen,
   DownloadManagerScreen,
   ModelSettingsScreen,
-  VoiceSettingsScreen,
   DeviceInfoScreen,
   StorageSettingsScreen,
   SecuritySettingsScreen,
@@ -231,7 +230,6 @@ export const AppNavigator: React.FC = () => {
         <RootStack.Screen name="DocumentPreview" component={DocumentPreviewScreen} />
         <RootStack.Screen name="ModelSettings" component={ModelSettingsScreen} />
         <RootStack.Screen name="RemoteServers" component={RemoteServersScreen} />
-        <RootStack.Screen name="VoiceSettings" component={VoiceSettingsScreen} />
         <RootStack.Screen name="DeviceInfo" component={DeviceInfoScreen} />
         <RootStack.Screen name="StorageSettings" component={StorageSettingsScreen} />
         <RootStack.Screen name="SecuritySettings" component={SecuritySettingsScreen} />
