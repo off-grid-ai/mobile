@@ -198,4 +198,37 @@ describe('ttsStore', () => {
       expect(getState().error).toBeNull();
     });
   });
+
+  // ── Routing & engine ────────────────────────────────────────────────────
+  describe('play routing', () => {
+    it('synthesizes via the engine when there is no audio file', async () => {
+      await getState().play('msg-x', { text: 'hello world' });
+      expect(mockEngine.speak).toHaveBeenCalledWith('hello world', expect.objectContaining({ messageId: 'msg-x' }));
+    });
+  });
+
+  describe('seek', () => {
+    it('is a no-op for non-file (streaming) clips', async () => {
+      await getState().seek('msg-x', 0.5);
+      expect(mockEngine.speak).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setEngine fallback', () => {
+    it('falls back to the default when the requested engine is not registered', async () => {
+      const { ttsRegistry } = jest.requireMock('../../../pro/audio/engine');
+      ttsRegistry.getRegisteredIds.mockReturnValue(['mock-tts']);
+      ttsRegistry.setActiveEngine.mockResolvedValue(mockEngine);
+      await getState().setEngine('outetts');
+      expect(ttsRegistry.setActiveEngine).toHaveBeenCalledWith('kokoro');
+      expect(getState().settings.engineId).toBe('kokoro');
+    });
+  });
+
+  describe('updateSettings speed', () => {
+    it('applies a live speed change to the active engine', () => {
+      getState().updateSettings({ speed: 1.5 });
+      expect(mockEngine.setSpeed).toHaveBeenCalledWith(1.5);
+    });
+  });
 });

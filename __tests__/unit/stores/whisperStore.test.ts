@@ -10,12 +10,13 @@
 jest.mock('../../../src/services', () => ({
   whisperService: {
     downloadModel: jest.fn(),
-    getModelPath: jest.fn(),
+    getModelPath: jest.fn((id: string) => `/models/ggml-${id}.bin`),
     loadModel: jest.fn(),
     unloadModel: jest.fn(),
     deleteModel: jest.fn(),
+    isModelDownloaded: jest.fn(),
   },
-  WHISPER_MODELS: [{ id: 'tiny', size: 75 }],
+  WHISPER_MODELS: [{ id: 'tiny', size: 75 }, { id: 'base', size: 142 }],
 }));
 
 jest.mock('../../../src/services/modelResidency', () => ({
@@ -410,6 +411,47 @@ describe('whisperStore', () => {
       getState().clearError();
 
       expect(getState().error).toBeNull();
+    });
+  });
+
+  // ============================================================================
+  // Multi-model (select / per-model delete / disk probe)
+  // ============================================================================
+  describe('multi-model', () => {
+    beforeEach(() => {
+      mockWhisperService.unloadModel.mockResolvedValue(undefined);
+      mockWhisperService.deleteModel.mockResolvedValue(undefined);
+      mockWhisperService.loadModel.mockResolvedValue(undefined);
+    });
+
+    it('refreshPresentModels populates presentModelIds from disk', async () => {
+      mockWhisperService.isModelDownloaded.mockImplementation(async (id: string) => id === 'tiny');
+      await getState().refreshPresentModels();
+      expect(getState().presentModelIds).toEqual(['tiny']);
+    });
+
+    it('selectModel activates an on-disk model without downloading', async () => {
+      mockWhisperService.loadModel.mockResolvedValue(undefined);
+      await getState().selectModel('base');
+      expect(getState().downloadedModelId).toBe('base');
+      expect(mockWhisperService.loadModel).toHaveBeenCalled();
+      expect(mockWhisperService.downloadModel).not.toHaveBeenCalled();
+    });
+
+    it('deleteModelById removes the file and clears active when it was active', async () => {
+      useWhisperStore.setState({ presentModelIds: ['tiny', 'base'], downloadedModelId: 'base', isModelLoaded: true });
+      await getState().deleteModelById('base');
+      expect(mockWhisperService.deleteModel).toHaveBeenCalledWith('base');
+      expect(getState().presentModelIds).toEqual(['tiny']);
+      expect(getState().downloadedModelId).toBeNull();
+      expect(getState().isModelLoaded).toBe(false);
+    });
+
+    it('deleteModelById keeps the active model when deleting a different one', async () => {
+      useWhisperStore.setState({ presentModelIds: ['tiny', 'base'], downloadedModelId: 'base' });
+      await getState().deleteModelById('tiny');
+      expect(getState().presentModelIds).toEqual(['base']);
+      expect(getState().downloadedModelId).toBe('base');
     });
   });
 });

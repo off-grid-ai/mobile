@@ -535,6 +535,7 @@ export const resetRemoteServerStore = (): void => {
 export const resetWhisperStore = (): void => {
   useWhisperStore.setState({
     downloadedModelId: null,
+    presentModelIds: [],
     isDownloading: false,
     downloadProgress: 0,
     isModelLoading: false,
