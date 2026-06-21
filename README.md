@@ -15,6 +15,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20%7C%20macOS-green.svg)](#install)
 [![codecov](https://codecov.io/gh/alichherawalla/off-grid-mobile/graph/badge.svg)](https://codecov.io/gh/alichherawalla/off-grid-mobile)
 [![Slack](https://img.shields.io/badge/Slack-Join%20Community-4A154B?logo=slack)](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3q7kj5gr6-rVzx5gl5LKPQh4mUE2CCvA)
+[![Pro](https://img.shields.io/badge/Off%20Grid%20Pro-%2450%20lifetime-000000?style=flat)](https://offgridmobileai.co/pay/)
 
 </div>
 
@@ -24,26 +25,34 @@
 
 <sub><b>BUILT BY</b></sub>
 
-<a href="https://mobile.wednesday.is/hire-ai-native-mobile-squad?utm_source=github&utm_medium=offgrid-readme&utm_campaign=ai-native-mobile-squad&utm_content=logo"><picture><source media="(prefers-color-scheme: dark)" srcset="https://mobile.wednesday.is/logos/wednesday-logo.svg" /><img src="src/assets/wednesday-logo.svg" alt="Wednesday Solutions" height="104" /></picture></a>
+<a href="https://wednesday.is/?utm_source=github&utm_medium=offgrid-readme&utm_content=logo"><picture><source media="(prefers-color-scheme: dark)" srcset="src/assets/wednesday-logo-dark.svg" /><img src="src/assets/wednesday-logo.svg" alt="Wednesday Solutions" height="160" /></picture></a>
 
 </div>
 
-Off Grid is built by [**Wednesday Solutions**](https://mobile.wednesday.is/hire-ai-native-mobile-squad?utm_source=github&utm_medium=offgrid-readme&utm_campaign=ai-native-mobile-squad&utm_content=body-link). We run **AI-Native Mobile Squads**: pre-vetted iOS and Android engineers paired with AI tooling for code review, testing, screenshot regression, and release notes. Squads plug into your org in a week and ship to production from day one.
+---
 
-<table align="center">
-  <tr>
-    <td><img src="src/assets/stat-4x.svg" alt="4x faster to ship" width="200" /></td>
-    <td><img src="src/assets/stat-2x.svg" alt="2x fewer crashes" width="200" /></td>
-    <td><img src="src/assets/stat-10x.svg" alt="10x more output, same cost" width="200" /></td>
-    <td><img src="src/assets/stat-100.svg" alt="100% money-back if we miss the claims" width="200" /></td>
-  </tr>
-</table>
+<br />
 
-<p align="center"><b>Want the same team that shipped offline AI to a phone working on your product?</b></p>
+<div align="center">
 
-<p align="center">
-<a href="https://mobile.wednesday.is/hire-ai-native-mobile-squad?utm_source=github&utm_medium=offgrid-readme&utm_campaign=ai-native-mobile-squad&utm_content=hire-cta"><img src="https://img.shields.io/badge/Hire%20an%20AI--Native%20Squad%20%E2%86%92-181717?style=for-the-badge&labelColor=000000" alt="Hire an AI-Native Squad" /></a>
-</p>
+## Off Grid Pro
+
+**Lifetime access for $50.**
+
+</div>
+
+<br />
+
+The free OSS keeps shipping, MIT, forever - that's not changing. Pro is an optional, additive tier.
+
+### What Pro adds
+
+- **Custom personas** - system prompts, voice, persistent memory per assistant
+- **End-to-end voice mode** - Whisper STT (already shipping) + Kokoro TTS, all on-device
+- **Calendar + email + MCP servers** - Linear, Notion, GitHub, your own MCP. Drafts only; you approve every send.
+- **Future Pro features** - included for the supported lifetime of the app
+
+**[→ Get Pro access](https://offgridmobileai.co/pay/)**
 
 ---
 
@@ -89,44 +98,6 @@ Most "local LLM" apps give you a text chatbot and call it a day. Off Grid is a *
 **AI Prompt Enhancement** — Simple prompt in, detailed Stable Diffusion prompt out. Your text model automatically enhances image generation prompts.
 
 ---
-
-<br />
-
-<div align="center">
-
-<sub>**FOUNDING SUPPORTER PRE-ORDERS · NOW OPEN**</sub>
-
-# Off Grid Pro
-
-**First 100 supporters lock in lifetime access for $10.**
-
-</div>
-
-<br />
-
-The free OSS keeps shipping, MIT, forever — that's not changing. Pro is an optional, additive tier we're opening pre-orders for.
-
-This is our little hope of keeping ambient AI on-device alive — and sustaining the open-source release that this project has been built on for the last two years. Not a subscription. Not VC. A small, finite group of people willing to fund the next 12 weeks of full-time work.
-
-**$10 × 100 = $1,000. After that, lifetime Pro moves to $50.**
-
-### What Pro adds
-
-- **Custom personas** — system prompts, voice, persistent memory per assistant
-- **End-to-end voice mode** — Whisper STT (already shipping) + Kokoro TTS, all on-device
-- **Calendar + email + MCP servers** — Linear, Notion, GitHub, your own MCP. Drafts only; you approve every send.
-- **Larger models** — full size range, including 7B on flagship phones, 13B on iPads / M-series Macs
-- **Future Pro features** — included for the supported lifetime of the app
-
-### The promise
-
-Pro ships in **12 weeks** from your purchase, or full refund. No forms, no questions.
-
-### Claim a Founding Supporter spot
-
-Join the founders Slack and drop into **#pro-first-100**. We'll say hi and get you set up.
-
-**[→ Join the Slack](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3q7kj5gr6-rVzx5gl5LKPQh4mUE2CCvA)**
 
 ## Performance
 
