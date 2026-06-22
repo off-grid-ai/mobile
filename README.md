@@ -211,6 +211,6 @@ Built on the shoulders of giants:
 
 *No cloud. No data harvesting. Just AI that works anywhere.*
 
-[Join the Community on Slack](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3q7kj5gr6-rVzx5gl5LKPQh4mUE2CCvA)
+[Join the Community on Slack](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-411pbtz7r-lcOK4YCeY40vh_~FUdcvLA)
 
 </div>
