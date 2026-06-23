@@ -50,8 +50,9 @@ const IMAGE_MODE_CYCLE: ImageModeState[] = ['auto', 'force', 'disabled'];
  * conditional. Sizing to the real count prevents the rightmost icons from
  * being clipped by the row's `overflow: hidden`.
  */
-const computePillIconsWidth = (supportsThinking: boolean, hasModeToggle: boolean): number =>
-  PILL_ICON_SIZE * (2 + (supportsThinking ? 1 : 0) + (hasModeToggle ? 1 : 0));
+// Attach + quick-settings only. The Chat/Voice mode toggle is no longer in this
+// (collapsing) row — it's rendered persistently above the input instead.
+const computePillIconsWidth = (): number => PILL_ICON_SIZE * 2;
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
@@ -216,6 +217,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       <AudioInput
         styles={styles}
         disabled={disabled}
+        onSend={onSend}
         isGenerating={isGenerating}
         imageMode={imageMode}
         imageModelLoaded={imageModelLoaded}
@@ -254,8 +256,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   }
 
   // Pro-only inline Chat↔Audio toggle (empty slot in free builds → null).
-  const ModeToggle = getSlot(SLOTS.chatInputModeToggle);
-  const pillIconsExpandedWidth = computePillIconsWidth(!!supportsThinking, !!ModeToggle);
+  const pillIconsExpandedWidth = computePillIconsWidth();
 
   const actionButton = canSend ? (
     <TouchableOpacity
@@ -331,17 +332,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             >
               <Icon name="plus" size={20} color={disabled ? colors.textMuted : colors.textSecondary} />
             </TouchableOpacity>
-            {supportsThinking && (
-              <TouchableOpacity
-                testID="thinking-toggle-button"
-                style={styles.pillIconButton}
-                onPress={handleThinkingToggle}
-                disabled={disabled}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-              >
-                <Icon name="zap" size={18} color={thinkingEnabled ? colors.primary : (disabled ? colors.textMuted : colors.textSecondary)} />
-              </TouchableOpacity>
-            )}
             <TouchableOpacity
               ref={quickSettings.triggerRef}
               testID="quick-settings-button"
@@ -355,9 +345,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 {showSettingsDot && <View style={styles.toolWarningDot} />}
               </View>
             </TouchableOpacity>
-            {/* Pro-only: one-tap switch into Audio (voice) interface mode.
-                Empty slot in free builds → nothing renders. */}
-            {ModeToggle && <ModeToggle styles={styles} disabled={disabled} />}
           </Animated.View>
         </View>
 
