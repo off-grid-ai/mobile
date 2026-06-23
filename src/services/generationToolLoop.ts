@@ -8,15 +8,16 @@ import { Message } from '../types';
 import { getToolsAsOpenAISchema, executeToolCall } from './tools';
 import type { ToolCall, ToolResult } from './tools/types';
 import { getToolExtensions } from './tools/extensions';
-import { selectLiteRTTools } from './litertToolSelector';
+import { Platform } from 'react-native';
+import { selectRelevantTools } from './litertToolSelector';
 import { providerRegistry } from './providers';
 import type { GenerationOptions, CompletionResult } from './providers/types';
 import logger from '../utils/logger';
 const MAX_TOOL_ITERATIONS = 3;
 const MAX_TOTAL_TOOL_CALLS = 5;
-// LiteRT only: above this many tools, run a fast routing pass to pick the relevant
-// ones before generating (small models can't fit many schemas in context). Tunable.
-const LITERT_TOOL_SELECTION_THRESHOLD = 5;
+// On-device: above this many tools, run a fast routing pass to pick the relevant ones
+// before generating (small models can't fit many schemas in context). Tunable.
+const TOOL_SELECTION_THRESHOLD = 5;
 // LiteRT runs the tool loop natively (automaticToolCalling), so the JS caps above don't
 // apply to it. Bound the native loop here instead: once a single response exceeds this many
 // tool calls we stop executing them and tell the model to answer, which prevents the KV cache
@@ -615,6 +616,48 @@ async function forceFinalTextResponse(ctx: ToolLoopContext, state: ToolLoopState
 }
 
 /**
+ * On-device two-pass tool routing. Built-in tools (few, tiny) are ALWAYS kept; the
+ * routing pass only decides which of the many MCP/ext tools to include, so a small
+ * model isn't handed every schema. The small model rarely emits the literal "none",
+ * so the rule is simply: router names MCP tools → include those; names nothing
+ * usable → keep built-in only (do NOT dump all MCP tools). A thrown error (genuine
+ * failure) still falls back to everything so a real request is never stranded.
+ *
+ * LiteRT (Android) routes via its native session; llama routes ONLY on iOS (Metal
+ * makes the extra prefill cheap — on Android llama it caused high TTFT). Remote
+ * models keep the full set. Routing never enters chat/context.
+ */
+async function selectEffectiveSchemas(ctx: ToolLoopContext, builtInSchemas: any[], extSchemas: any[]): Promise<any[]> {
+  const all = [...builtInSchemas, ...extSchemas];
+  const litertActive = isLiteRTActive();
+  const llamaIosNative = !litertActive && Platform.OS === 'ios' && llmService.supportsToolCalling();
+  const activeServerId = useRemoteServerStore.getState().activeServerId;
+  const usingRemote = !!activeServerId && providerRegistry.hasProvider(activeServerId) && !llmService.isModelLoaded();
+  const shouldRoute = !usingRemote && (litertActive || llamaIosNative) && extSchemas.length > 0 && all.length > TOOL_SELECTION_THRESHOLD;
+  const engine = litertActive ? 'litert' : (usingRemote ? 'remote' : (Platform.OS === 'ios' ? 'llama-ios' : 'llama-android'));
+  logger.log(`[ToolSelect] gate — engine=${engine}, tools=${all.length} (ext=${extSchemas.length}), threshold=${TOOL_SELECTION_THRESHOLD}, willRoute=${shouldRoute}`);
+  if (!shouldRoute) return all;
+
+  // LiteRT routes on a throwaway native session (default); llama via a capped completion.
+  const generate = litertActive ? undefined : (s: string, u: string) => llmService.generateToolSelection(s, u);
+  try {
+    // Route over the MCP/ext tools only — built-in tools are always kept.
+    const selected = await selectRelevantTools(getLastUserQuery(ctx.messages), extSchemas, generate);
+    if (!selected || selected.length === 0) {
+      // No MCP tool named (router said "none" OR just didn't name one) → built-in only.
+      logger.log(`[ToolLoop] pass-1: no MCP tool needed; keeping ${builtInSchemas.length} built-in only (${engine})`);
+      return builtInSchemas;
+    }
+    const filteredExt = extSchemas.filter(s => selected.includes(s.function.name));
+    logger.log(`[ToolLoop] pass-1 narrowed ${all.length}→${builtInSchemas.length + filteredExt.length} tools (${engine})`);
+    return [...builtInSchemas, ...filteredExt];
+  } catch (e) {
+    logger.warn(`[ToolLoop] tool selection failed; using all tools: ${String(e)}`);
+    return all;
+  }
+}
+
+/**
  * Run the tool-calling loop: call LLM → execute tools → re-inject results → repeat.
  * Returns when the model produces a final response with no tool calls.
  */
@@ -631,22 +674,7 @@ export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
     `schemaChars=${JSON.stringify(toolSchemas).length}, builtinIds=[${ctx.enabledToolIds.join(', ')}]`,
   );
 
-  // LiteRT only: when many tools are enabled, run a fast tools-free routing pass to
-  // pick the relevant ones, then carry only those into the loop — a small on-device
-  // model can't fit every schema in context. Runs on a throwaway session (never
-  // enters chat/context); falls back to all tools on any miss or failure.
-  let effectiveSchemas = toolSchemas;
-  if (isLiteRTActive() && toolSchemas.length > LITERT_TOOL_SELECTION_THRESHOLD) {
-    try {
-      const selected = await selectLiteRTTools(getLastUserQuery(ctx.messages), toolSchemas);
-      if (selected.length > 0 && selected.length < toolSchemas.length) {
-        effectiveSchemas = toolSchemas.filter(s => selected.includes(s.function.name));
-        logger.log(`[ToolLoop] LiteRT pass-1 narrowed ${toolSchemas.length}→${effectiveSchemas.length} tools`);
-      }
-    } catch (e) {
-      logger.warn(`[ToolLoop] LiteRT tool selection failed; using all tools: ${String(e)}`);
-    }
-  }
+  const effectiveSchemas = await selectEffectiveSchemas(ctx, builtInSchemas, extSchemas);
 
   const loopMessages = [...ctx.messages];
   let totalToolCalls = 0;

@@ -298,6 +298,15 @@ class LLMService {
     this.activeCompletionPromise = completionWork.then(() => { }, () => { });
     try { await completionWork; return fullResponse.trim(); } finally { this.isGenerating = false; this.activeCompletionPromise = null; }
   }
+
+  /** Ephemeral, tools-free routing pass for two-pass tool selection (not user-facing). */
+  async generateToolSelection(systemPrompt: string, userText: string): Promise<string> {
+    const messages: Message[] = [
+      { id: 'tool-select-sys', role: 'system', content: systemPrompt, timestamp: 0 },
+      { id: 'tool-select-user', role: 'user', content: userText, timestamp: 0 },
+    ];
+    return this.generateWithMaxTokens(messages, 64);
+  }
   async stopGeneration(): Promise<void> {
     if (this.context) { try { await this.context.stopCompletion(); } catch (e) { logger.log('[LLM] Stop error:', e); } }
     this.isGenerating = false;
