@@ -8,11 +8,15 @@ import { Message } from '../types';
 import { getToolsAsOpenAISchema, executeToolCall } from './tools';
 import type { ToolCall, ToolResult } from './tools/types';
 import { getToolExtensions } from './tools/extensions';
+import { selectLiteRTTools } from './litertToolSelector';
 import { providerRegistry } from './providers';
 import type { GenerationOptions, CompletionResult } from './providers/types';
 import logger from '../utils/logger';
 const MAX_TOOL_ITERATIONS = 3;
 const MAX_TOTAL_TOOL_CALLS = 5;
+// LiteRT only: above this many tools, run a fast routing pass to pick the relevant
+// ones before generating (small models can't fit many schemas in context). Tunable.
+const LITERT_TOOL_SELECTION_THRESHOLD = 5;
 // LiteRT runs the tool loop natively (automaticToolCalling), so the JS caps above don't
 // apply to it. Bound the native loop here instead: once a single response exceeds this many
 // tool calls we stop executing them and tell the model to answer, which prevents the KV cache
@@ -402,17 +406,25 @@ async function callLiteRTForLoop(
   }
   await liteRTService.prepareConversation(conversationId, systemPrompt, { samplerConfig, tools, history });
   const onToolCall = ctx ? buildLiteRTToolCallHandler(ctx, conversationId) : undefined;
-  const fullResponse = await liteRTService.generateRaw(
-    text,
-    imageUris,
-    {
-      onToken: token => onStream?.({ content: token }),
-      onToolCall,
-      onReasoning: token => onStream?.({ reasoningContent: token }),
-    },
-  );
-  // Native SDK handles all tool→model cycles internally; toolCalls always empty here
-  return { fullResponse, toolCalls: [] };
+  const handlers = {
+    onToken: (token: string) => onStream?.({ content: token }),
+    onReasoning: (token: string) => onStream?.({ reasoningContent: token }),
+  };
+  try {
+    const fullResponse = await liteRTService.generateRaw(text, imageUris, { ...handlers, onToolCall });
+    // Native SDK handles all tool→model cycles internally; toolCalls always empty here
+    return { fullResponse, toolCalls: [] };
+  } catch (e: any) {
+    const msg = String(e?.message ?? e);
+    // The litertlm native FC parser hard-fails (Status Code 3) when a small model emits
+    // a malformed tool call. Rather than surface a raw "Generation Error", retry once
+    // WITHOUT tools so the user still gets a text answer instead of a crashed turn.
+    if (!/parse (tool|FC) calls|Status Code: 3/i.test(msg)) throw e;
+    logger.warn(`[ToolLoop] LiteRT tool-call parse failed; retrying without tools: ${msg.slice(0, 140)}`);
+    await liteRTService.prepareConversation(conversationId, systemPrompt, { samplerConfig, tools: [], history });
+    const fullResponse = await liteRTService.generateRaw(text, imageUris, handlers);
+    return { fullResponse, toolCalls: [] };
+  }
 }
 
 const TOOL_BEHAVIOR_GUIDANCE = '\n\nMake good use of the tools available to you. If you are uncertain or lack current information, use the appropriate tool rather than guessing. Never refuse or say you cannot help when a tool is available. For multiple distinct items, make a separate tool call for each. Call tools silently — do not announce them first.';
@@ -614,6 +626,24 @@ export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
     `[ToolLoop] tools=${toolSchemas.length} (builtin=${builtInSchemas.length}, ext=${extSchemas.length}), ` +
     `schemaChars=${JSON.stringify(toolSchemas).length}, builtinIds=[${ctx.enabledToolIds.join(', ')}]`,
   );
+
+  // LiteRT only: when many tools are enabled, run a fast tools-free routing pass to
+  // pick the relevant ones, then carry only those into the loop — a small on-device
+  // model can't fit every schema in context. Runs on a throwaway session (never
+  // enters chat/context); falls back to all tools on any miss or failure.
+  let effectiveSchemas = toolSchemas;
+  if (isLiteRTActive() && toolSchemas.length > LITERT_TOOL_SELECTION_THRESHOLD) {
+    try {
+      const selected = await selectLiteRTTools(getLastUserQuery(ctx.messages), toolSchemas);
+      if (selected.length > 0 && selected.length < toolSchemas.length) {
+        effectiveSchemas = toolSchemas.filter(s => selected.includes(s.function.name));
+        logger.log(`[ToolLoop] LiteRT pass-1 narrowed ${toolSchemas.length}→${effectiveSchemas.length} tools`);
+      }
+    } catch (e) {
+      logger.warn(`[ToolLoop] LiteRT tool selection failed; using all tools: ${String(e)}`);
+    }
+  }
+
   const loopMessages = [...ctx.messages];
   let totalToolCalls = 0;
   const state: ToolLoopState = { firstTokenFired: false, thinkingDoneFired: false, streamedContent: '', reasoningContent: '' };
@@ -632,7 +662,7 @@ export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
     state.reasoningContent = '';
 
     const onStream = buildStreamHandler(ctx, state);
-    const { fullResponse, toolCalls } = await callLLMWithRetry(loopMessages, toolSchemas, { onStream, forceRemote: ctx.forceRemote, conversationId: ctx.conversationId, ctx });
+    const { fullResponse, toolCalls } = await callLLMWithRetry(loopMessages, effectiveSchemas, { onStream, forceRemote: ctx.forceRemote, conversationId: ctx.conversationId, ctx });
 
     const { effectiveToolCalls, displayResponse } = resolveToolCalls(fullResponse, toolCalls);
     const cappedToolCalls = effectiveToolCalls.slice(0, MAX_TOTAL_TOOL_CALLS - totalToolCalls);

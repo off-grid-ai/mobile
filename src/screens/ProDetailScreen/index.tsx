@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, StyleSheet, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import LinearGradient from 'react-native-linear-gradient';
@@ -7,7 +7,7 @@ import { useTheme, useThemedStyles } from '../../theme';
 import type { ThemeColors, ThemeShadows } from '../../theme';
 import { SPACING, TYPOGRAPHY } from '../../constants';
 import { useAppStore } from '../../stores';
-import { resetProIdentityForTesting } from '../../services/proLicenseService';
+import { resetProIdentityForTesting, PRO_PAY_PAGE_URL } from '../../services/proLicenseService';
 import { ProUnlockModal } from './ProUnlockModal';
 
 const INTEGRATIONS = [
@@ -21,9 +21,12 @@ export const ProDetailScreen: React.FC = () => {
   const { colors, isDark } = useTheme();
   const styles = useThemedStyles(createStyles);
   const hasRegisteredPro = useAppStore((s) => s.hasRegisteredPro);
-  const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [verifyModalVisible, setVerifyModalVisible] = useState(false);
 
-  const openEmailModal = () => setEmailModalVisible(true);
+  // "Get Pro" goes straight to the web pay page — no email is collected in-app.
+  // Verifying an existing membership is the only flow that opens the modal.
+  const openPayPage = () => { Linking.openURL(PRO_PAY_PAGE_URL).catch(() => {}); };
+  const openVerifyModal = () => setVerifyModalVisible(true);
 
   // Purchase verified: the modal shows its own success card and the keychain is
   // already written. Pro features load on the next app launch (checkProStatus
@@ -60,7 +63,7 @@ export const ProDetailScreen: React.FC = () => {
           ) : (
             <TouchableOpacity
               style={styles.getProButton}
-              onPress={openEmailModal}
+              onPress={openPayPage}
             >
               <Text style={styles.getProButtonText}>Get Pro</Text>
             </TouchableOpacity>
@@ -154,32 +157,31 @@ export const ProDetailScreen: React.FC = () => {
               <Icon name="check-circle" size={20} color={colors.primary} />
               <Text style={styles.proActiveText}>Pro is active on this account.</Text>
             </View>
-            {__DEV__ && (
-              <TouchableOpacity
-                style={styles.restoreButton}
-                onPress={async () => {
-                  await resetProIdentityForTesting();
-                  Alert.alert('Reset done', 'RC identity cleared. Restart the app to test the purchase flow again.');
-                }}
-              >
-                <Text style={styles.restoreText}>Reset Pro identity</Text>
-              </TouchableOpacity>
-            )}
+            {/* TEMPORARY: ungated in release for testing the purchase/restore flow. Re-gate behind __DEV__ before shipping. */}
+            <TouchableOpacity
+              style={styles.restoreButton}
+              onPress={async () => {
+                await resetProIdentityForTesting();
+                Alert.alert('Reset done', 'RC identity cleared. Restart the app to test the purchase flow again.');
+              }}
+            >
+              <Text style={styles.restoreText}>Reset Pro identity</Text>
+            </TouchableOpacity>
           </>
         ) : (
           <>
             <TouchableOpacity
               style={styles.ctaButton}
-              onPress={openEmailModal}
+              onPress={openPayPage}
             >
               <Text style={styles.ctaText}>Get Pro</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.restoreButton}
-              onPress={openEmailModal}
+              onPress={openVerifyModal}
             >
-              <Text style={styles.restoreText}>Already paid? Unlock with email</Text>
+              <Text style={styles.restoreText}>Already a member? Verify with email</Text>
             </TouchableOpacity>
           </>
         )}
@@ -187,8 +189,8 @@ export const ProDetailScreen: React.FC = () => {
       </ScrollView>
 
       <ProUnlockModal
-        visible={emailModalVisible}
-        onClose={() => setEmailModalVisible(false)}
+        visible={verifyModalVisible}
+        onClose={() => setVerifyModalVisible(false)}
         onUnlocked={handleUnlocked}
       />
     </SafeAreaView>

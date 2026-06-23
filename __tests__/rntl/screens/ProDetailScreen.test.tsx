@@ -7,14 +7,14 @@ import { Alert, Linking } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { useAppStore } from '../../../src/stores/appStore';
 
+const PAY_URL = 'https://offgridmobileai.co/pay';
 const mockActivateProByEmail = jest.fn();
-const mockGetWebPurchaseUrl = jest.fn((..._args: unknown[]) => 'https://pay.rev.cat/token/buyer%40example.com?email=buyer%40example.com');
 const mockResetProIdentityForTesting = jest.fn();
 
 jest.mock('../../../src/services/proLicenseService', () => ({
   activateProByEmail: (...args: unknown[]) => mockActivateProByEmail(...args),
-  getWebPurchaseUrl: (...args: unknown[]) => mockGetWebPurchaseUrl(...args),
   resetProIdentityForTesting: (...args: unknown[]) => mockResetProIdentityForTesting(...args),
+  PRO_PAY_PAGE_URL: 'https://offgridmobileai.co/pay',
 }));
 
 import { ProDetailScreen } from '../../../src/screens/ProDetailScreen';
@@ -40,75 +40,85 @@ describe('ProDetailScreen', () => {
     expect(queryAllByText('Get Pro').length).toBeGreaterThan(0);
   });
 
-  it('opens web checkout with the entered email', async () => {
-    const { getAllByText, getByText, getByPlaceholderText } = render(<ProDetailScreen />);
+  it('Get Pro opens the web pay page directly without a modal', () => {
+    const { getAllByText, queryByText } = render(<ProDetailScreen />);
     fireEvent.press(getAllByText('Get Pro')[0]);
-    fireEvent.changeText(getByPlaceholderText('you@example.com'), 'buyer@example.com');
-    fireEvent.press(getByText('Continue to payment'));
-    await waitFor(() => expect(mockGetWebPurchaseUrl).toHaveBeenCalledWith('buyer@example.com'));
-    expect(linkingSpy).toHaveBeenCalledWith('https://pay.rev.cat/token/buyer%40example.com?email=buyer%40example.com');
+    expect(linkingSpy).toHaveBeenCalledWith(PAY_URL);
+    // No in-app email step for paying.
+    expect(queryByText('Verify membership')).toBeNull();
   });
 
-  it('shows inline success state on a successful verify', async () => {
+  it('"Already a member? Verify with email" opens the verify modal', () => {
+    const { getByText } = render(<ProDetailScreen />);
+    fireEvent.press(getByText('Already a member? Verify with email'));
+    expect(getByText('Verify membership')).toBeTruthy();
+    expect(getByText('Enter the email tied to your Pro membership.')).toBeTruthy();
+  });
+
+  it('verifies the membership and shows the success card', async () => {
     mockActivateProByEmail.mockResolvedValueOnce(true);
-    const { getAllByText, getByText, getByPlaceholderText } = render(<ProDetailScreen />);
-    fireEvent.press(getAllByText('Get Pro')[0]);
+    const { getByText, getByTestId, getByPlaceholderText } = render(<ProDetailScreen />);
+    fireEvent.press(getByText('Already a member? Verify with email'));
     fireEvent.changeText(getByPlaceholderText('you@example.com'), 'buyer@example.com');
-    // Switch to verify mode first
-    fireEvent.press(getByText('Already paid? Verify email instead'));
-    fireEvent.press(getByText('Verify and unlock'));
+    fireEvent.press(getByTestId('unlock-cta'));
     await waitFor(() => expect(mockActivateProByEmail).toHaveBeenCalledWith('buyer@example.com'));
     await waitFor(() => expect(getByText('Pro activated')).toBeTruthy());
   });
 
   it('lets the user dismiss the success card with Got it', async () => {
     mockActivateProByEmail.mockResolvedValueOnce(true);
-    const { getAllByText, getByText, queryByText, getByPlaceholderText } = render(<ProDetailScreen />);
-    fireEvent.press(getAllByText('Get Pro')[0]);
+    const { getByText, getByTestId, queryByText, getByPlaceholderText } = render(<ProDetailScreen />);
+    fireEvent.press(getByText('Already a member? Verify with email'));
     fireEvent.changeText(getByPlaceholderText('you@example.com'), 'buyer@example.com');
-    fireEvent.press(getByText('Already paid? Verify email instead'));
-    fireEvent.press(getByText('Verify and unlock'));
+    fireEvent.press(getByTestId('unlock-cta'));
     await waitFor(() => expect(getByText('Pro activated')).toBeTruthy());
     fireEvent.press(getByText('Got it'));
     await waitFor(() => expect(queryByText('Pro activated')).toBeNull());
   });
 
-  it('shows inline error when no purchase is found for that email', async () => {
+  it('shows an inline error when no membership is found for that email', async () => {
     mockActivateProByEmail.mockResolvedValueOnce(false);
-    const { getAllByText, getByText, getByPlaceholderText } = render(<ProDetailScreen />);
-    fireEvent.press(getAllByText('Get Pro')[0]);
+    const { getByText, getByTestId, getByPlaceholderText } = render(<ProDetailScreen />);
+    fireEvent.press(getByText('Already a member? Verify with email'));
     fireEvent.changeText(getByPlaceholderText('you@example.com'), 'nope@example.com');
-    fireEvent.press(getByText('Already paid? Verify email instead'));
-    fireEvent.press(getByText('Verify and unlock'));
-    await waitFor(() => expect(getByText(/No Pro purchase found/)).toBeTruthy());
+    fireEvent.press(getByTestId('unlock-cta'));
+    await waitFor(() => expect(getByText(/No Pro membership found/)).toBeTruthy());
   });
 
-  it('keeps the checkout button disabled until text is entered', async () => {
-    const { getAllByText, getByText, getByPlaceholderText } = render(<ProDetailScreen />);
-    fireEvent.press(getAllByText('Get Pro')[0]);
-    // Empty input: the disabled button ignores the press, no checkout opens.
-    fireEvent.press(getByText('Continue to payment'));
-    expect(linkingSpy).not.toHaveBeenCalled();
-    // Once text is entered the button is enabled and opens checkout.
+  it('keeps the verify button disabled until text is entered', async () => {
+    const { getByText, getByTestId, getByPlaceholderText } = render(<ProDetailScreen />);
+    fireEvent.press(getByText('Already a member? Verify with email'));
+    // Empty input: the disabled button ignores the press, no verify call.
+    fireEvent.press(getByTestId('unlock-cta'));
+    expect(mockActivateProByEmail).not.toHaveBeenCalled();
+    // Once text is entered the button is enabled and verifies.
     fireEvent.changeText(getByPlaceholderText('you@example.com'), 'buyer@example.com');
-    fireEvent.press(getByText('Continue to payment'));
-    await waitFor(() => expect(linkingSpy).toHaveBeenCalled());
+    fireEvent.press(getByTestId('unlock-cta'));
+    await waitFor(() => expect(mockActivateProByEmail).toHaveBeenCalled());
   });
 
   it('treats whitespace-only input as empty so the button stays disabled', () => {
-    const { getAllByText, getByText, getByPlaceholderText } = render(<ProDetailScreen />);
-    fireEvent.press(getAllByText('Get Pro')[0]);
+    const { getByText, getByTestId, getByPlaceholderText } = render(<ProDetailScreen />);
+    fireEvent.press(getByText('Already a member? Verify with email'));
     fireEvent.changeText(getByPlaceholderText('you@example.com'), '   ');
-    fireEvent.press(getByText('Continue to payment'));
-    expect(linkingSpy).not.toHaveBeenCalled();
+    fireEvent.press(getByTestId('unlock-cta'));
+    expect(mockActivateProByEmail).not.toHaveBeenCalled();
   });
 
-  it('strips surrounding whitespace before opening checkout', async () => {
-    const { getAllByText, getByText, getByPlaceholderText } = render(<ProDetailScreen />);
-    fireEvent.press(getAllByText('Get Pro')[0]);
+  it('strips surrounding whitespace before verifying', async () => {
+    mockActivateProByEmail.mockResolvedValueOnce(true);
+    const { getByText, getByTestId, getByPlaceholderText } = render(<ProDetailScreen />);
+    fireEvent.press(getByText('Already a member? Verify with email'));
     fireEvent.changeText(getByPlaceholderText('you@example.com'), '  buyer@example.com  ');
-    fireEvent.press(getByText('Continue to payment'));
-    await waitFor(() => expect(mockGetWebPurchaseUrl).toHaveBeenCalledWith('buyer@example.com'));
+    fireEvent.press(getByTestId('unlock-cta'));
+    await waitFor(() => expect(mockActivateProByEmail).toHaveBeenCalledWith('buyer@example.com'));
+  });
+
+  it('"Not a member yet? Get Pro" in the modal opens the pay page', () => {
+    const { getByText } = render(<ProDetailScreen />);
+    fireEvent.press(getByText('Already a member? Verify with email'));
+    fireEvent.press(getByText('Not a member yet? Get Pro'));
+    expect(linkingSpy).toHaveBeenCalledWith(PAY_URL);
   });
 
   it('renders the Pro Active state when the user already owns Pro', () => {

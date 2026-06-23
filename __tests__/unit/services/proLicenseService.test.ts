@@ -6,6 +6,7 @@ import {
   revalidatePro,
   clearProForTesting,
   configureRevenueCat,
+  resetProIdentityForTesting,
 } from '../../../src/services/proLicenseService';
 
 jest.mock('react-native-purchases', () => ({
@@ -168,6 +169,47 @@ describe('proLicenseService', () => {
       await clearProForTesting();
       expect(mockResetGenericPassword).toHaveBeenCalledTimes(1);
       expect(mockSetHasRegisteredPro).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe('resetProIdentityForTesting()', () => {
+    it('logs out a non-anonymous user, clears the keychain, and resets the flag', async () => {
+      Purchases.getCustomerInfo.mockResolvedValueOnce({ originalAppUserId: 'someone@example.com' });
+      mockResetGenericPassword.mockResolvedValueOnce(true);
+      await resetProIdentityForTesting();
+      expect(Purchases.logOut).toHaveBeenCalledTimes(1);
+      expect(mockResetGenericPassword).toHaveBeenCalledTimes(1);
+      expect(mockSetHasRegisteredPro).toHaveBeenCalledWith(false);
+    });
+
+    it('skips logOut for an anonymous user but still clears the keychain', async () => {
+      Purchases.getCustomerInfo.mockResolvedValueOnce({ originalAppUserId: '$RCAnonymousID:abc123' });
+      mockResetGenericPassword.mockResolvedValueOnce(true);
+      await resetProIdentityForTesting();
+      expect(Purchases.logOut).not.toHaveBeenCalled();
+      expect(mockResetGenericPassword).toHaveBeenCalledTimes(1);
+      expect(mockSetHasRegisteredPro).toHaveBeenCalledWith(false);
+    });
+
+    it('still clears local state when getCustomerInfo throws', async () => {
+      Purchases.getCustomerInfo.mockRejectedValueOnce(new Error('offline'));
+      mockResetGenericPassword.mockResolvedValueOnce(true);
+      await resetProIdentityForTesting();
+      expect(mockResetGenericPassword).toHaveBeenCalledTimes(1);
+      expect(mockSetHasRegisteredPro).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe('activateProByEmail() error paths', () => {
+    it('rethrows when logIn fails', async () => {
+      Purchases.logIn.mockRejectedValueOnce(new Error('network'));
+      await expect(activateProByEmail('x@example.com')).rejects.toThrow('network');
+    });
+
+    it('returns false on a miss and tolerates a logOut failure', async () => {
+      Purchases.logIn.mockResolvedValueOnce({ customerInfo: customerWith(null) });
+      Purchases.logOut.mockRejectedValueOnce(new Error('logout fail'));
+      await expect(activateProByEmail('x@example.com')).resolves.toBe(false);
     });
   });
 });

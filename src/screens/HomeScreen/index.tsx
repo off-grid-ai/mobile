@@ -17,6 +17,7 @@ import { useHomeScreen, HomeScreenNavigationProp } from './hooks/useHomeScreen';
 import { useHomeScreenSpotlight } from './hooks/useHomeScreenSpotlight';
 import { RecentConversations } from './components/RecentConversations';
 import { ModelPickerSheet } from './components/ModelPickerSheet';
+import { LoadingOverlay } from './components/LoadingOverlay';
 import { ModelsSummaryRow } from '../../components/models/ModelsSummaryRow';
 import { ModelsManagerSheet, ModelRowType } from '../../components/models/ModelsManagerSheet';
 import { WhisperPickerSheet } from '../../components/models/WhisperPickerSheet';
@@ -265,8 +266,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       <WhisperPickerSheet visible={whisperOpen} onClose={() => setWhisperOpen(false)} />
       <VoiceModelsSheet visible={voiceOpen} onClose={() => setVoiceOpen(false)} />
 
-      {/* Model loading happens in the background — the active-model card shows an
-          inline "Loading…" indicator, so no full-screen blocking overlay. */}
+      {/* Full-screen model-loading overlay (animated progress + rotating tips). */}
+      <LoadingOverlay loadingState={loadingState} />
 
       {/* Custom Alert Modal */}
       <CustomAlert

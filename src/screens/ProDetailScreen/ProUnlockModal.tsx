@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,9 @@ import Icon from 'react-native-vector-icons/Feather';
 import { useTheme, useThemedStyles } from '../../theme';
 import type { ThemeColors, ThemeShadows } from '../../theme';
 import { SPACING, TYPOGRAPHY } from '../../constants';
-import { activateProByEmail, getWebPurchaseUrl } from '../../services/proLicenseService';
+import { activateProByEmail, PRO_PAY_PAGE_URL } from '../../services/proLicenseService';
+
+type ErrorMsg = string | null;
 
 type Props = {
   visible: boolean;
@@ -19,61 +21,54 @@ type Props = {
   onUnlocked: () => void;
 };
 
-// Two modes: pay (default) or verify (already paid).
-// One primary button, one text toggle. No competing button rows.
-type Mode = 'pay' | 'verify';
-type ErrorMsg = string | null;
-
+// Verify-only modal: the user enters the email tied to their Pro membership and
+// we re-check the entitlement. Paying is a separate path — "Get Pro" opens the
+// web pay page directly (no email collected in-app), so this modal never asks
+// for payment, only verification of an existing membership.
 export const ProUnlockModal: React.FC<Props> = ({ visible, onClose, onUnlocked }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
 
   const [email, setEmail] = useState('');
-  const [mode, setMode] = useState<Mode>('pay');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ErrorMsg>(null);
   const [success, setSuccess] = useState(false);
 
-  const reset = () => {
-    setEmail('');
-    setMode('pay');
-    setLoading(false);
-    setError(null);
-    setSuccess(false);
-  };
+  // The modal stays mounted across opens, so clear transient state each time it
+  // opens so a previous attempt's email/error never leaks into a fresh open.
+  useEffect(() => {
+    if (visible) {
+      setEmail('');
+      setError(null);
+      setSuccess(false);
+      setLoading(false);
+    }
+  }, [visible]);
 
   const close = () => {
     if (loading || success) return;
-    reset();
+    setEmail('');
+    setError(null);
     onClose();
   };
 
   // Dismiss the success card once the user has read it. The keychain write is
   // already done at this point; Pro features load on the next app launch.
   const finishSuccess = () => {
-    reset();
+    setEmail('');
+    setError(null);
+    setSuccess(false);
     onClose();
   };
 
   const clearError = () => { if (error) setError(null); };
 
-  const handlePrimary = async () => {
-    // Strip leading/trailing whitespace so stray spaces never reach the URL or
-    // the RevenueCat identity. The button is disabled when empty, so this is a
-    // defensive guard rather than a validation message.
+  const handleVerify = async () => {
+    // Strip whitespace so stray spaces never reach the RevenueCat identity. The
+    // button is disabled when empty, so this is a defensive guard.
     const trimmed = email.trim();
     if (!trimmed) return;
 
-    if (mode === 'pay') {
-      try {
-        await Linking.openURL(getWebPurchaseUrl(trimmed));
-      } catch {
-        setError('Could not open checkout. Please try again.');
-      }
-      return;
-    }
-
-    // verify mode
     setLoading(true);
     setError(null);
     try {
@@ -82,13 +77,21 @@ export const ProUnlockModal: React.FC<Props> = ({ visible, onClose, onUnlocked }
         setSuccess(true);
         onUnlocked();
       } else {
-        setError('No Pro purchase found for that email. Check the address and try again.');
+        setError('No Pro membership found for that email. Check the address and try again.');
       }
     } catch {
       setError('Verification failed. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Not a member yet — send them to the web pay page. No email is collected here;
+  // the page handles checkout and the buyer's email becomes their membership.
+  const handleGetPro = () => {
+    Linking.openURL(PRO_PAY_PAGE_URL).catch(() => {
+      setError('Could not open the Pro page. Please try again.');
+    });
   };
 
   if (success) {
@@ -110,9 +113,6 @@ export const ProUnlockModal: React.FC<Props> = ({ visible, onClose, onUnlocked }
     );
   }
 
-  const isPay = mode === 'pay';
-  // Enable the CTA only once non-whitespace text is entered. No format check —
-  // any text is allowed; only whitespace-only input keeps the button disabled.
   const hasInput = email.trim().length > 0;
 
   return (
@@ -126,11 +126,9 @@ export const ProUnlockModal: React.FC<Props> = ({ visible, onClose, onUnlocked }
           </TouchableOpacity>
 
           {/* Header */}
-          <Text style={styles.title}>Unlock Off Grid Pro</Text>
+          <Text style={styles.title}>Verify your membership</Text>
           <Text style={styles.subtitle}>
-            {isPay
-              ? 'Enter your email to pay. One-time $50, no subscription.'
-              : 'Enter the email you used when you paid.'}
+            Enter the email tied to your Pro membership.
           </Text>
 
           {/* Email input */}
@@ -153,35 +151,25 @@ export const ProUnlockModal: React.FC<Props> = ({ visible, onClose, onUnlocked }
 
           {/* Primary CTA */}
           <TouchableOpacity
+            testID="unlock-cta"
             style={[styles.primaryBtn, (loading || !hasInput) && styles.disabled]}
-            onPress={handlePrimary}
+            onPress={handleVerify}
             disabled={loading || !hasInput}
             activeOpacity={0.85}
           >
-            {isPay ? (
-              <>
-                <Text style={styles.primaryBtnText}>Continue to payment</Text>
-                <View style={styles.pricePill}>
-                  <Text style={styles.priceText}>$50</Text>
-                </View>
-              </>
-            ) : (
-              <Text style={styles.primaryBtnText}>
-                {loading ? 'Verifying...' : 'Verify and unlock'}
-              </Text>
-            )}
+            <Text style={styles.primaryBtnText}>
+              {loading ? 'Verifying...' : 'Verify membership'}
+            </Text>
           </TouchableOpacity>
 
-          {/* Mode toggle — plain text, no button chrome */}
+          {/* Footer — not a member yet, go to the pay page */}
           <TouchableOpacity
             style={styles.toggleRow}
-            onPress={() => { setMode(isPay ? 'verify' : 'pay'); setError(null); }}
+            onPress={handleGetPro}
             disabled={loading}
           >
-            <Text style={styles.toggleText}>
-              {isPay ? 'Already paid? Verify email instead' : 'Not paid yet? Back to checkout'}
-            </Text>
-            <Icon name={isPay ? 'arrow-right' : 'arrow-left'} size={13} color={colors.textSecondary} />
+            <Text style={styles.toggleText}>Not a member yet? Get Pro</Text>
+            <Icon name="external-link" size={13} color={colors.textSecondary} />
           </TouchableOpacity>
 
         </View>
@@ -262,17 +250,6 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     fontWeight: '600' as const,
     color: '#FFFFFF',
     letterSpacing: 0.2,
-  },
-  pricePill: {
-    backgroundColor: 'rgba(0,0,0,0.18)',
-    borderRadius: 20,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-  },
-  priceText: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: '#FFFFFF',
   },
 
   toggleRow: {

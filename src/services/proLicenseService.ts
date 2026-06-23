@@ -144,6 +144,11 @@ export async function revalidatePro(): Promise<void> {
   }
 }
 
+// Public web pay page. "Get Pro" opens this directly (no in-app email): the page
+// collects the buyer's email and runs checkout, and that email becomes the
+// membership the user later verifies in-app via activateProByEmail.
+export const PRO_PAY_PAGE_URL = 'https://offgridmobileai.co/pay';
+
 // Builds the RevenueCat Web Purchase Link URL. RC identifies the customer by
 // the App User ID, which is a path segment (not a query parameter). We use the
 // email as the App User ID so the Stripe purchase ties to the same identity the
