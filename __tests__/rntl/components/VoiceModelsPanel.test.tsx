@@ -56,6 +56,7 @@ const actions = {
 let mockStoreState: any;
 jest.mock('../../../pro/audio/ttsStore', () => ({ useTTSStore: () => mockStoreState }));
 
+import { useFocusEffect } from '@react-navigation/native';
 import { VoiceModelsPanel } from '../../../pro/audio/ui/VoiceModelsPanel';
 
 const VOICES = [
@@ -107,5 +108,18 @@ describe('VoiceModelsPanel', () => {
     expect(cta).toBeTruthy();
     await act(async () => { fireEvent.press(cta); });
     await waitFor(() => expect(actions.downloadModels).toHaveBeenCalled());
+  });
+
+  it('re-derives download status from disk when the screen regains focus', async () => {
+    // Disk is the source of truth: returning to the panel after a download or
+    // delete elsewhere must re-probe rather than show stale state.
+    let focusCb: (() => void) | undefined;
+    (useFocusEffect as jest.Mock).mockImplementation((cb: () => void) => { focusCb = cb; });
+    await renderPanel();
+    actions.checkDownloadStatus.mockClear(); // drop the mount-effect call
+    mockEngine.checkAssetStatus.mockClear();
+    await act(async () => { focusCb?.(); await Promise.resolve(); });
+    expect(actions.checkDownloadStatus).toHaveBeenCalled();
+    expect(mockEngine.checkAssetStatus).toHaveBeenCalled();
   });
 });
