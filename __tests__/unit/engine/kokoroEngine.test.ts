@@ -71,6 +71,12 @@ describe('KokoroEngine install status', () => {
   });
 
   it('REGRESSION: stays downloaded after the bridge unmounts (engine switch)', async () => {
+    // Model genuinely on disk for the whole test (a successful disk scan is the
+    // authoritative signal).
+    listDownloadedModels.mockResolvedValue([
+      `/x/${KOKORO_FILES[0]}`,
+      `/x/${KOKORO_FILES[1]}`,
+    ]);
     const engine = new KokoroEngine();
 
     // 1. Bridge mounts, model finishes downloading, engine becomes ready.
@@ -85,12 +91,7 @@ describe('KokoroEngine install status', () => {
     expect(engine.getPhase()).toBe('idle');
 
     // Before the fix this reported 'downloading' forever (progress was 1, phase
-    // not ready). Now it must remain 'downloaded' — progress>=1 still counts,
-    // and the disk cache confirms it too.
-    listDownloadedModels.mockResolvedValue([
-      `/x/${KOKORO_FILES[0]}`,
-      `/x/${KOKORO_FILES[1]}`,
-    ]);
+    // not ready). It must remain 'downloaded' — the disk cache confirms it.
     [state] = await engine.checkAssetStatus();
     expect(state.status).toBe('downloaded');
     expect(state.progress).toBe(1);
@@ -121,6 +122,35 @@ describe('KokoroEngine install status', () => {
     expect(state.status).toBe('downloaded');
   });
 
+  it('speak() asks the bridge to re-mount when the model was freed, then streams', async () => {
+    const engine = new KokoroEngine();
+    // The model was freed under memory pressure — no bridge attached. The bridge
+    // registers a mount-requester that (re)attaches the handle when asked.
+    engine._setMountRequester(() => engine._setBridge(noopHandle, 'af_heart'));
+
+    await engine.speak('hello');
+
+    expect(noopHandle.speak).toHaveBeenCalledWith('hello', 1);
+    expect(engine.getPhase()).toBe('ready');
+  });
+
+  it('speak() resolves when the bridge attaches asynchronously after the request', async () => {
+    const engine = new KokoroEngine();
+    engine._setMountRequester(() => {
+      // Simulate React mounting the hook on a later tick.
+      setTimeout(() => engine._setBridge(noopHandle, 'af_heart'), 50);
+    });
+
+    await engine.speak('async hello');
+    expect(noopHandle.speak).toHaveBeenCalledWith('async hello', 1);
+  });
+
+  it('speak() rejects when no bridge can mount (unsupported device)', async () => {
+    const engine = new KokoroEngine();
+    // No mount-requester registered at all.
+    await expect(engine.speak('nope')).rejects.toThrow(/bridge not mounted/i);
+  });
+
   it('deleteAssets clears state and removes resources from disk', async () => {
     listDownloadedModels.mockResolvedValue([
       `/x/${KOKORO_FILES[0]}`,
@@ -138,6 +168,19 @@ describe('KokoroEngine install status', () => {
     listDownloadedModels.mockResolvedValue([]);
     const [state] = await engine.checkAssetStatus();
     expect(state.status).toBe('not-downloaded');
+    expect(engine.isFullyDownloaded()).toBe(false);
+  });
+
+  it('a conclusive empty disk scan beats stale in-session progress', async () => {
+    // After a delete, a transient bridge re-render can leave _downloadProgress
+    // at 1. A successful (conclusive) disk scan finding nothing must still report
+    // not-downloaded — otherwise the Voice panel keeps showing "downloaded" after
+    // a removal. (Contrast: when the scan THROWS, progress>=1 is trusted — see
+    // the fetcher-unavailable case above.)
+    const engine = new KokoroEngine();
+    engine._setDownloadProgress(1); // stale leftover
+    listDownloadedModels.mockResolvedValue([]); // conclusive: nothing on disk
+    await engine.checkAssetStatus();
     expect(engine.isFullyDownloaded()).toBe(false);
   });
 });
