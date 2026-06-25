@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, Switch, TouchableOpacity } from 'react-native';
+import { View, Text, Switch, TouchableOpacity, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { AppSheet } from './AppSheet';
 import { useTheme, useThemedStyles } from '../theme';
 import { FONTS, TYPOGRAPHY, SPACING } from '../constants';
 import { AVAILABLE_TOOLS } from '../services/tools';
+import { getToolExtensions } from '../services/tools/extensions';
 import { useAppStore } from '../stores';
 import type { ThemeColors, ThemeShadows } from '../theme';
 
@@ -27,6 +28,14 @@ export const ToolPickerSheet: React.FC<ToolPickerSheetProps> = ({
   const styles = useThemedStyles(createStyles);
   const { toolCountHintDismissed, setToolCountHintDismissed } = useAppStore();
 
+  // Pro extensions (e.g. email/calendar) advertise tools that belong in the main
+  // picker and toggle through the same enabledTools array. MCP is excluded here
+  // because it has its own dedicated picker. Dedupe by id so a tool never doubles.
+  const extensionTools = getToolExtensions().flatMap(e => e.getToolDefinitions?.() ?? []);
+  const availableTools = [...AVAILABLE_TOOLS, ...extensionTools].filter(
+    (tool, index, all) => all.findIndex(t => t.id === tool.id) === index,
+  );
+
   const showHint = enabledTools.length > 3 && !toolCountHintDismissed;
 
   return (
@@ -36,7 +45,7 @@ export const ToolPickerSheet: React.FC<ToolPickerSheetProps> = ({
       enableDynamicSizing
       title="Tools"
     >
-      <View style={styles.container}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         {showHint && (
           <View style={[styles.hintBanner, { backgroundColor: colors.surface }]}>
             <Icon name="alert-circle" size={16} color={TOOL_WARNING_COLOR} style={styles.hintIcon} />
@@ -50,7 +59,7 @@ export const ToolPickerSheet: React.FC<ToolPickerSheetProps> = ({
             </View>
           </View>
         )}
-        {AVAILABLE_TOOLS.map(tool => {
+        {availableTools.map(tool => {
           const isEnabled = enabledTools.includes(tool.id);
           return (
             <View key={tool.id} style={styles.toolRow} testID={`tool-picker-row-${tool.id}`}>
@@ -78,15 +87,18 @@ export const ToolPickerSheet: React.FC<ToolPickerSheetProps> = ({
         <Text style={styles.hint}>
           Enabling more tools can confuse the model and increases latency on first response.
         </Text>
-      </View>
+      </ScrollView>
     </AppSheet>
   );
 };
 
 const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
   container: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
+    maxHeight: 420,
+  },
+  contentContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xl,
   },
   toolRow: {
     flexDirection: 'row' as const,

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DeviceInfo, DownloadedModel, ModelRecommendation, ONNXImageModel, ImageGenerationMode, AutoDetectMethod, ModelLoadingStrategy, CacheType, InferenceBackend, INFERENCE_BACKENDS, LiteRTBackend, GeneratedImage } from '../types';
+import { DeviceInfo, DownloadedModel, ModelRecommendation, ONNXImageModel, ImageGenerationMode, AutoDetectMethod, CacheType, InferenceBackend, INFERENCE_BACKENDS, LiteRTBackend, GeneratedImage } from '../types';
 
 function isUnknownLike(value: string): boolean {
   const normalized = value.trim().toLowerCase();
@@ -35,7 +35,7 @@ type AppSettings = {
   imageGenerationMode: ImageGenerationMode; autoDetectMethod: AutoDetectMethod;
   classifierModelId: string | null; imageSteps: number; imageGuidanceScale: number;
   imageThreads: number; imageWidth: number; imageHeight: number;
-  imageUseOpenCL: boolean; enhanceImagePrompts: boolean; modelLoadingStrategy: ModelLoadingStrategy;
+  imageUseOpenCL: boolean; enhanceImagePrompts: boolean;
   enableGpu: boolean; gpuLayers: number; flashAttn: boolean;
   cacheType: CacheType; showGenerationDetails: boolean; enabledTools: string[];
   thinkingEnabled: boolean;
@@ -68,6 +68,10 @@ interface AppState {
   removeDownloadedModel: (modelId: string) => void;
   activeModelId: string | null;
   setActiveModelId: (modelId: string | null) => void;
+  /** Last text model the user explicitly selected. Persists across residency
+   *  eviction so routing can reload it on demand. */
+  lastTextModelId: string | null;
+  setLastTextModelId: (modelId: string | null) => void;
   isLoadingModel: boolean;
   setIsLoadingModel: (loading: boolean) => void;
   modelMaxContext: number | null;
@@ -140,7 +144,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   imageHeight: 512,
   imageUseOpenCL: true,
   enhanceImagePrompts: false,
-  modelLoadingStrategy: 'performance' as ModelLoadingStrategy,
   enableGpu: Platform.OS === 'ios',
   inferenceBackend: Platform.OS === 'ios' ? INFERENCE_BACKENDS.METAL : INFERENCE_BACKENDS.CPU,
   gpuLayers: 99,
@@ -174,8 +177,9 @@ function migratePersistedState(persistedState: any, currentState: AppState): App
   delete merged.imageModelDownloading;
   delete merged.imageModelDownloadIds;
   delete merged.imageModelDownloadId;
-  if (persistedState?.settings?.modelLoadingStrategy === 'memory') {
-    merged.settings = { ...merged.settings, modelLoadingStrategy: 'performance' };
+  // modelLoadingStrategy was removed (the residency manager owns swapping now).
+  if (merged.settings?.modelLoadingStrategy !== undefined) {
+    delete merged.settings.modelLoadingStrategy;
   }
   if (persistedState?.settings && !persistedState.settings.cacheType) {
     merged.settings = { ...merged.settings, cacheType: persistedState.settings.flashAttn ? 'q8_0' : 'f16', flashAttn: true };
@@ -230,6 +234,8 @@ export const useAppStore = create<AppState>()(
         })),
       activeModelId: null,
       setActiveModelId: (modelId) => set({ activeModelId: modelId }),
+      lastTextModelId: null,
+      setLastTextModelId: (modelId) => set({ lastTextModelId: modelId }),
       isLoadingModel: false,
       setIsLoadingModel: (loading) => set({ isLoadingModel: loading }),
       modelMaxContext: null,
@@ -323,6 +329,7 @@ export const useAppStore = create<AppState>()(
         onboardingChecklist: state.onboardingChecklist,
         checklistDismissed: state.checklistDismissed,
         activeModelId: state.activeModelId,
+        lastTextModelId: state.lastTextModelId,
         settings: state.settings,
         activeImageModelId: state.activeImageModelId,
         generatedImages: state.generatedImages,

@@ -6,6 +6,7 @@ import {
 } from '../../components';
 import { llmService, activeModelService, modelManager } from '../../services';
 import { liteRTService } from '../../services/litert';
+import { useAppStore } from '../../stores';
 import { DownloadedModel, RemoteModel, ONNXImageModel } from '../../types';
 import logger from '../../utils/logger';
 
@@ -133,6 +134,34 @@ export async function initiateModelLoad(
   }
 }
 
+/**
+ * For a chat request with no text model loaded: load the last-selected text
+ * model (residency manager fits it into memory), or open the model selector
+ * if the user never chose one. Returns true when a model is loading/loaded.
+ */
+export async function ensureTextModelForChatFn(deps: {
+  setShowModelSelector: (v: boolean) => void;
+  setLoadingModel: (m: DownloadedModel | null) => void;
+  setIsModelLoading: (v: boolean) => void;
+}): Promise<boolean> {
+  const { lastTextModelId, downloadedModels } = useAppStore.getState();
+  if (!lastTextModelId) {
+    deps.setShowModelSelector(true);
+    return false;
+  }
+  deps.setLoadingModel(downloadedModels.find(m => m.id === lastTextModelId) ?? null);
+  deps.setIsModelLoading(true);
+  try {
+    await activeModelService.loadTextModel(lastTextModelId);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    deps.setIsModelLoading(false);
+    deps.setLoadingModel(null);
+  }
+}
+
 export async function ensureModelLoadedFn(
   deps: ModelActionDeps,
 ): Promise<void> {
@@ -257,7 +286,7 @@ export async function handleUnloadModelFn(deps: ModelActionDeps): Promise<void> 
 
 type ImageModelEffectsDeps = {
   setDownloadedImageModels: (models: ONNXImageModel[]) => void;
-  settings: { imageGenerationMode: string; autoDetectMethod: string; classifierModelId: string | null | undefined; modelLoadingStrategy: string };
+  settings: { imageGenerationMode: string; autoDetectMethod: string; classifierModelId: string | null | undefined };
   activeImageModelId: string | null;
   downloadedModels: DownloadedModel[];
 };
@@ -279,7 +308,7 @@ export function useChatImageModelEffects(deps: ImageModelEffectsDeps): void {
     const preload = async () => {
       if (
         settings.imageGenerationMode === 'auto' && settings.autoDetectMethod === 'llm' &&
-        settings.classifierModelId && activeImageModelId && settings.modelLoadingStrategy === 'performance'
+        settings.classifierModelId && activeImageModelId
       ) {
         const classifierModel = downloadedModels.find(m => m.id === settings.classifierModelId);
         if (classifierModel?.filePath && !llmService.getLoadedModelPath()) {
@@ -293,7 +322,7 @@ export function useChatImageModelEffects(deps: ImageModelEffectsDeps): void {
     preload();
     return () => { cancelled = true; };
 
-  }, [settings.imageGenerationMode, settings.autoDetectMethod, settings.classifierModelId, activeImageModelId, settings.modelLoadingStrategy]);
+  }, [settings.imageGenerationMode, settings.autoDetectMethod, settings.classifierModelId, activeImageModelId]);
 }
 
 type ModelStateSyncDeps = {

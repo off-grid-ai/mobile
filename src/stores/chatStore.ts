@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Message, Conversation, GenerationMeta } from '../types';
 import { stripControlTokens, stripStreamingControlTokens } from '../utils/messageContent';
 import { generateId } from '../utils/generateId';
+import { callHook, HOOKS } from '../bootstrap/hookRegistry';
 
 function nextUpdatedAt(previousUpdatedAt?: string): string {
   const now = Date.now();
@@ -51,6 +52,10 @@ function extractChannelThinking(rawContent: string): { reasoningContent: string 
   // Qwen channel format: <|channel|>analysis<|message|>[thinking]<|channel|>final<|message|>[response]
   const qwen = sliceThinkingBlock(rawContent, '<|channel|>analysis<|message|>', '<|channel|>final<|message|>');
   if (qwen) return qwen;
+  // <think>...</think> format (Qwen 3.5, DeepSeek, etc.)
+  const thinkTags = sliceThinkingBlock(rawContent, '<think>', '</think>');
+  if (thinkTags) return thinkTags;
+
   return { reasoningContent: undefined, responseContent: rawContent };
 }
 
@@ -86,6 +91,7 @@ interface ChatState {
   addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => Message;
   updateMessageContent: (conversationId: string, messageId: string, content: string) => void;
   updateMessageThinking: (conversationId: string, messageId: string, isThinking: boolean) => void;
+  updateMessageAudio: (conversationId: string, messageId: string, audio: { audioPath?: string; waveformData?: number[]; audioDurationSeconds?: number; isGeneratingAudio?: boolean; isAudioModeMessage?: boolean }) => void;
   deleteMessage: (conversationId: string, messageId: string) => void;
   deleteMessagesAfter: (conversationId: string, messageId: string) => void;
   startStreaming: (conversationId: string) => void;
@@ -198,6 +204,10 @@ export const useChatStore = create<ChatState>()(
         }));
       },
 
+      updateMessageAudio: (conversationId, messageId, audio) => {
+        set((state) => ({ conversations: mapConversation(state.conversations, conversationId, (conv) => updateMessageInConv(conv, messageId, (msg) => ({ ...msg, ...audio }))) }));
+      },
+
       deleteMessage: (conversationId, messageId) => {
         set((state) => ({
           conversations: mapConversation(state.conversations, conversationId, (conv) => ({
@@ -242,6 +252,9 @@ export const useChatStore = create<ChatState>()(
           isStreaming: true,
           isThinking: false,
         }));
+        // Feed the growing answer to pro audio for real-time sentence-by-sentence
+        // TTS (no-op unless voice mode + engine ready; free builds register nothing).
+        callHook(HOOKS.audioOnStreamingToken, get().streamingMessage);
       },
 
       appendToStreamingReasoningContent: (token) => {

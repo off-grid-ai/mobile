@@ -51,11 +51,24 @@ jest.mock('../../../src/services/documentService', () => ({
 // Mock the stores
 const mockUseWhisperStore = jest.fn();
 const mockUseAppStore = jest.fn();
+const mockUseUiModeStore = jest.fn((selector?: (s: { interfaceMode: string }) => unknown) => {
+  const state = { interfaceMode: 'chat' };
+  return selector ? selector(state) : state;
+});
 
-jest.mock('../../../src/stores', () => ({
-  useWhisperStore: () => mockUseWhisperStore(),
-  useAppStore: () => mockUseAppStore(),
-}));
+jest.mock('../../../src/stores', () => {
+  const useUiModeStore = (selector?: (s: { interfaceMode: string }) => unknown) => mockUseUiModeStore(selector);
+  useUiModeStore.getState = () => ({ interfaceMode: 'chat' });
+  // activeModelService.supportsAudioInput() reads useAppStore.getState(), so the
+  // mocked store needs getState too (mirrors the hook return).
+  const useAppStore = () => mockUseAppStore();
+  useAppStore.getState = () => mockUseAppStore();
+  return {
+    useWhisperStore: () => mockUseWhisperStore(),
+    useAppStore,
+    useUiModeStore,
+  };
+});
 
 // Mock the whisper hook
 const mockUseWhisperTranscription = jest.fn();
@@ -110,6 +123,8 @@ describe('ChatInput', () => {
     mockUseAppStore.mockReturnValue({
       settings: { thinkingEnabled: false },
       updateSettings: jest.fn(),
+      downloadedModels: [],
+      activeModelId: null,
     });
 
     mockUseWhisperTranscription.mockReturnValue({

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import { Card } from '../components';
 import { AnimatedEntry } from '../components/AnimatedEntry';
 import { AnimatedListItem } from '../components/AnimatedListItem';
 import { MadeWithLove } from '../components/MadeWithLove';
+import { DebugLogsScreen } from '../components/DebugLogsScreen';
+import { getSettingsSections } from '../components/settings/sectionRegistry';
 import { useFocusTrigger } from '../hooks/useFocusTrigger';
 import { useTheme, useThemedStyles } from '../theme';
 import type { ThemeColors, ThemeShadows } from '../theme';
@@ -31,7 +33,7 @@ import { RootStackParamList, MainTabParamList } from '../navigation/types';
 import { GITHUB_URL, SHARE_ON_X_URL } from '../utils/sharePrompt';
 import packageJson from '../../package.json';
 
-const FEEDBACK_EMAIL = 'support@offgridmobile.co';
+const FEEDBACK_EMAIL = 'support@offgridmobileai.co';
 
 type NavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'SettingsTab'>,
@@ -48,8 +50,12 @@ export const SettingsScreen: React.FC = () => {
   const setThemeMode = useAppStore((s) => s.setThemeMode);
   const completeChecklistStep = useAppStore((s) => s.completeChecklistStep);
   const resetChecklist = useAppStore((s) => s.resetChecklist);
+  const [showDebugLogs, setShowDebugLogs] = useState(false);
   const deviceInfo = useAppStore((s) => s.deviceInfo);
-  const showProBanner = useAppStore((s) => !s.proBannerDismissed);
+  // Hidden once the user dismisses it, or once Pro is active (the upsell makes no
+  // sense to a paid user). hasRegisteredPro only flips true after RC verification
+  // (activateProByEmail / revalidatePro), so this also covers "paid and verified".
+  const showProBanner = useAppStore((s) => !s.proBannerDismissed && !s.hasRegisteredPro);
   const setProBannerDismissed = useAppStore((s) => s.setProBannerDismissed);
 
   useEffect(() => {
@@ -201,7 +207,6 @@ export const SettingsScreen: React.FC = () => {
               { icon: 'sliders', title: 'Model Settings', desc: 'System prompt, generation, and performance', screen: 'ModelSettings' as const },
               { icon: 'wifi', title: 'Remote Servers', desc: 'Connect to Ollama, LM Studio, and more', screen: 'RemoteServers' as const },
             //  { icon: 'search', title: 'Web Search', desc: 'Configure search API key for reliable results', screen: 'WebSearchSettings' as const },
-              { icon: 'mic', title: 'Voice Transcription', desc: 'On-device speech to text', screen: 'VoiceSettings' as const },
               { icon: 'lock', title: 'Security', desc: 'Passphrase and app lock', screen: 'SecuritySettings' as const },
               { icon: 'smartphone', title: 'Device Information', desc: 'Hardware and compatibility', screen: 'DeviceInfo' as const },
               { icon: 'hard-drive', title: 'Storage', desc: 'Models and data usage', screen: 'StorageSettings' as const },
@@ -316,20 +321,31 @@ export const SettingsScreen: React.FC = () => {
           </Card>
         </AnimatedEntry>
 
-        {/* Reset Onboarding */}
-        <AnimatedEntry index={10} staggerMs={40} trigger={focusTrigger}>
-          <View style={styles.devButtonGroup}>
-            <TouchableOpacity style={styles.devButton} onPress={handleResetOnboarding}>
-              <Icon name="rotate-ccw" size={14} color={colors.textMuted} />
-              <Text style={styles.devButtonText}>Reset Onboarding</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.devButton} onPress={resetChecklist}>
-              <Icon name="list" size={14} color={colors.textMuted} />
-              <Text style={styles.devButtonText}>Reset Onboarding Checklist</Text>
-            </TouchableOpacity>
-          </View>
-        </AnimatedEntry>
+        {/* Pro feature sections registered at runtime by @offgrid/pro */}
+        {getSettingsSections().map((Section, i) => <Section key={Section.displayName ?? String(i)} />)}
+
+        {/* Dev-only tooling — stripped from release builds */}
+        {__DEV__ && (
+          <AnimatedEntry index={10} staggerMs={40} trigger={focusTrigger}>
+            <View style={styles.devButtonGroup}>
+              <TouchableOpacity style={styles.devButton} onPress={handleResetOnboarding}>
+                <Icon name="rotate-ccw" size={14} color={colors.textMuted} />
+                <Text style={styles.devButtonText}>Reset Onboarding</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.devButton} onPress={resetChecklist}>
+                <Icon name="list" size={14} color={colors.textMuted} />
+                <Text style={styles.devButtonText}>Reset Onboarding Checklist</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.devButton} onPress={() => setShowDebugLogs(true)}>
+                <Icon name="terminal" size={14} color={colors.textMuted} />
+                <Text style={styles.devButtonText}>Debug Logs</Text>
+              </TouchableOpacity>
+            </View>
+          </AnimatedEntry>
+        )}
+
         <MadeWithLove />
+        {__DEV__ && <DebugLogsScreen visible={showDebugLogs} onClose={() => setShowDebugLogs(false)} />}
       </ScrollView>
     </SafeAreaView>
   );

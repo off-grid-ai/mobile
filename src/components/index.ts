@@ -9,6 +9,8 @@ export { ModelSelectorModal } from './ModelSelectorModal';
 export { GenerationSettingsModal } from './GenerationSettingsModal';
 export { CustomAlert, showAlert, hideAlert, initialAlertState } from './CustomAlert';
 export type { AlertButton, AlertState, CustomAlertProps } from './CustomAlert';
+export { CenteredAlert } from './CenteredAlert';
+export type { CenteredAlertProps } from './CenteredAlert';
 export { ThinkingIndicator } from './ThinkingIndicator';
 export { AnimatedPressable } from './AnimatedPressable';
 export type { AnimatedPressableProps } from './AnimatedPressable';

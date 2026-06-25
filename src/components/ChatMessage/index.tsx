@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Clipboard } from 'react-native';
 import { useTheme, useThemedStyles } from '../../theme';
+import { useUiModeStore } from '../../stores';
+import { callHook, HOOKS } from '../../bootstrap/hookRegistry';
 import Icon from 'react-native-vector-icons/Feather';
 import { stripControlTokens } from '../../utils/messageContent';
 import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../CustomAlert';
@@ -10,7 +12,7 @@ import { createStyles } from './styles';
 import { MessageAttachments } from './components/MessageAttachments';
 import { MessageContent } from './components/MessageContent';
 import { GenerationMeta } from './components/GenerationMeta';
-import { ActionMenuSheet, EditSheet } from './components/ActionMenuSheet';
+import { ActionMenuSheet, EditSheet, SelectTextSheet } from './components/ActionMenuSheet';
 import { MarkdownText } from '../MarkdownText';
 import { parseThinkingContent, formatTime, formatDuration, buildMessageData } from './utils';
 import { ThinkingBlock } from './components/ThinkingBlock';
@@ -133,14 +135,16 @@ type MetaRowProps = {
   isStreaming?: boolean;
   showActions: boolean;
   onMenuOpen: () => void;
+  metaExtra?: React.ReactNode;
 };
 
-const MessageMetaRow: React.FC<MetaRowProps> = ({ message, styles, isStreaming, showActions, onMenuOpen }) => (
+const MessageMetaRow: React.FC<MetaRowProps> = ({ message, styles, isStreaming, showActions, onMenuOpen, metaExtra }) => (
   <View style={styles.metaRow}>
     <Text style={styles.timestamp}>{formatTime(message.timestamp)}</Text>
     {message.generationTimeMs != null && message.role === 'assistant' && (
       <Text style={styles.generationTime}>{formatDuration(message.generationTimeMs)}</Text>
     )}
+    {metaExtra}
     {showActions && !isStreaming && (
       <TouchableOpacity style={styles.actionHint} onPress={onMenuOpen}>
         <Text style={styles.actionHintText}>•••</Text>
@@ -157,7 +161,9 @@ const ToolCallWithThinking: React.FC<{
   return (
     <View style={styles.systemInfoContainer}>
       {!!tc?.thinking && (
-        <ThinkingBlock parsedContent={tc} showThinking={showThinking} onToggle={onToggle} styles={styles} />
+        <View style={styles.thinkingBlockWrapper}>
+          <ThinkingBlock parsedContent={tc} showThinking={showThinking} onToggle={onToggle} styles={styles} />
+        </View>
       )}
       {hasText && (
         <View testID="tool-call-pre-text" style={styles.toolCallPreText}>
@@ -179,12 +185,18 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   onGenerateImage,
   showActions = true,
   canGenerateImage = false,
+  canSpeak: canSpeakProp = false,
+  onSpeak: onSpeakProp,
   showGenerationDetails = false,
   animateEntry = false,
+  metaExtra,
 }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const ttsCanSpeak = callHook<boolean>(HOOKS.audioCanSpeak) ?? false;
+  const interfaceMode = useUiModeStore((s) => s.interfaceMode);
   const [showActionMenu, setShowActionMenu] = useState(false);
+  const [showSelectText, setShowSelectText] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(message.content);
   const [showThinking, setShowThinking] = useState(!!isStreaming);
@@ -219,6 +231,12 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
     setTimeout(() => setIsEditing(true), 350);
   };
 
+  const handleSelectText = () => {
+    setShowActionMenu(false);
+    // Let the action sheet finish closing before opening the select-text sheet.
+    setTimeout(() => setShowSelectText(true), 350);
+  };
+
   const handleSaveEdit = () => {
     const trimmed = editedContent.trim();
     if (trimmed !== message.content) onEdit?.(message, trimmed);
@@ -240,6 +258,17 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
     const source = isUser ? message.content : parsedContent.response;
     onGenerateImage?.(source.trim().slice(0, 500));
     setShowActionMenu(false);
+  };
+
+  const canSpeak = !isUser && !isStreaming && (canSpeakProp || ttsCanSpeak);
+
+  const handleSpeak = () => {
+    setShowActionMenu(false);
+    if (onSpeakProp) {
+      onSpeakProp();
+      return;
+    }
+    callHook(HOOKS.audioSpeak, displayContent, message.id);
   };
 
   if (message.isSystemInfo) {
@@ -291,6 +320,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         isStreaming={isStreaming}
         showActions={showActions}
         onMenuOpen={() => setShowActionMenu(true)}
+        metaExtra={metaExtra}
       />
 
       {showGenerationDetails && !isUser && message.generationMeta && (
@@ -310,11 +340,20 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         canEdit={!!onEdit}
         canRetry={!!onRetry}
         canGenerateImage={canGenerateImage && !!onGenerateImage}
+        canSpeak={canSpeak}
         styles={styles}
         onCopy={handleCopy}
         onEdit={handleEdit}
         onRetry={handleRetry}
         onGenerateImage={handleGenerateImage}
+        onSpeak={handleSpeak}
+        onSelectText={interfaceMode === 'chat' ? handleSelectText : undefined}
+      />
+      <SelectTextSheet
+        visible={showSelectText}
+        onClose={() => setShowSelectText(false)}
+        content={displayContent}
+        styles={styles}
       />
       <EditSheet
         visible={isEditing}

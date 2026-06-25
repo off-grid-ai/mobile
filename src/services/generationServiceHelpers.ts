@@ -200,6 +200,22 @@ function assertLiteRTImageSupport(
   }
 }
 
+function assertLiteRTAudioSupport(
+  audioUris: string[] | undefined,
+  svc: any,
+  chatStore: ReturnType<typeof useChatStore.getState>,
+): void {
+  if (!audioUris || audioUris.length === 0) return;
+  const { downloadedModels, activeModelId } = useAppStore.getState();
+  const activeModel = downloadedModels.find((m: any) => m.id === activeModelId);
+  const liteRTActiveModel = activeModel?.engine === 'litert' ? activeModel : null;
+  if (!liteRTActiveModel?.liteRTAudio) {
+    chatStore.clearStreamingMessage();
+    svc.resetState();
+    throw new Error('This model does not support audio input. Remove the audio clip or switch to an audio-capable model.');
+  }
+}
+
 async function runLiteRTResponseImpl(svc: any, req: GenerationRequest): Promise<void> {
   const { conversationId, messages, onFirstToken } = req;
   const chatStore = useChatStore.getState();
@@ -218,8 +234,12 @@ async function runLiteRTResponseImpl(svc: any, req: GenerationRequest): Promise<
   const imageUris = allAttachments
     .filter((a: any) => a.type === 'image' && typeof a.uri === 'string' && a.uri.trim().length > 0)
     .map((a: any) => a.uri);
+  const audioUris = allAttachments
+    .filter((a: any) => a.type === 'audio' && typeof a.uri === 'string' && a.uri.trim().length > 0)
+    .map((a: any) => a.uri);
 
   assertLiteRTImageSupport(imageUris, svc, chatStore);
+  assertLiteRTAudioSupport(audioUris, svc, chatStore);
 
   const history = buildLiteRTHistory(messages);
 
@@ -278,7 +298,7 @@ async function runLiteRTResponseImpl(svc: any, req: GenerationRequest): Promise<
           svc.resetState();
         },
       },
-      imageUris,
+      { imageUris, audioUris },
     );
   } catch (error: any) {
     if (svc.abortRequested) return;

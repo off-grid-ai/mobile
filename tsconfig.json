@@ -2,7 +2,20 @@
   "extends": "@react-native/typescript-config",
   "compilerOptions": {
     "types": ["jest", "node"],
+    "paths": {
+      "@offgrid/core/*": ["./src/*"],
+      "react-native-fs": ["./src/shims/react-native-fs.ts"]
+    },
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["**/node_modules", "**/Pods"]
+  "exclude": [
+    "**/node_modules", "**/Pods", "pro/**",
+    "__tests__/unit/audio/**",
+    "__tests__/unit/engine/**",
+    "__tests__/unit/services/ttsService.test.ts",
+    "__tests__/unit/stores/ttsStore.test.ts",
+    "__tests__/integration/stores/tts.test.ts",
+    "__tests__/rntl/components/ChatInputModeToggle.test.tsx",
+    "__tests__/rntl/components/VoiceModelsPanel.test.tsx"
+  ]
 }
