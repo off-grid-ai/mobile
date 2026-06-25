@@ -22,7 +22,6 @@
   "dependencies": {
     "@dr.pogodin/react-native-fs": "^2.38.1",
     "@gorhom/bottom-sheet": "^5.2.8",
-    "@kesha-antonov/react-native-background-downloader": "^4.5.4",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@op-engineering/op-sqlite": "^15.2.5",
     "@react-native-async-storage/async-storage": "^2.2.0",
