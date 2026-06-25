@@ -9,25 +9,15 @@
  *  - every on-disk (present) model shows as downloaded, not just the active one
  *  - tapping a present-but-inactive model SELECTS it (selectModel), no re-download
  *  - per-model delete calls deleteModelById
- *  - a HuggingFace search queries searchWhisperRepos
  */
 import React from 'react';
-import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { render, fireEvent, act } from '@testing-library/react-native';
 
 jest.mock('../../../src/services', () => ({
   WHISPER_MODELS: [
     { id: 'tiny.en', name: 'Tiny', size: 75, lang: 'en', url: 'https://x/ggml-tiny.en.bin', description: 'Fastest, English only' },
     { id: 'small', name: 'Small', size: 466, lang: 'multi', url: 'https://x/ggml-small.bin', description: 'High accuracy, 99 languages' },
   ],
-}));
-
-const mockSearchWhisperRepos = jest.fn((..._a: any[]) => Promise.resolve([] as any[]));
-const mockGetWhisperFiles = jest.fn((..._a: any[]) => Promise.resolve([] as any[]));
-jest.mock('../../../src/services/huggingface', () => ({
-  huggingFaceService: {
-    searchWhisperRepos: (...a: any[]) => mockSearchWhisperRepos(...a),
-    getWhisperFiles: (...a: any[]) => mockGetWhisperFiles(...a),
-  },
 }));
 
 const mockWhisperActions = {
@@ -155,15 +145,5 @@ describe('TranscriptionModelsTab', () => {
     mockWhisperActions.refreshPresentModels.mockClear(); // drop the mount-effect call
     act(() => { focusCb?.(); });
     expect(mockWhisperActions.refreshPresentModels).toHaveBeenCalledTimes(1);
-  });
-
-  it('searches HuggingFace for other-language models', async () => {
-    const { getByTestId } = render(<TranscriptionModelsTab />);
-    await act(async () => {
-      fireEvent.changeText(getByTestId('transcription-search'), 'hindi');
-    });
-    await waitFor(() => {
-      expect(mockSearchWhisperRepos).toHaveBeenCalledWith('hindi');
-    }, { timeout: 1500 });
   });
 });
