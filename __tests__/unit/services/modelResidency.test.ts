@@ -40,23 +40,44 @@ describe('planEviction', () => {
   });
 
   it('never evicts a pinned resident (e.g. the classifier)', () => {
-    const current = [R('classifier', 'classifier', 100, 1, true), R('whisper', 'whisper', 150, 2)];
-    // Tight budget that would otherwise force evicting everything.
+    const current = [R('classifier', 'classifier', 100, 1, true), R('img', 'image', 800, 2)];
+    // Loading text swaps out the image model (mutual exclusion); the pinned
+    // classifier survives.
     const plan = planEviction(current, { key: 'txt', type: 'text', sizeMB: 800 }, 900);
-    expect(plan.evict.map(e => e.key)).toEqual(['whisper']);
+    expect(plan.evict.map(e => e.key)).toEqual(['img']);
     expect(plan.evict.some(e => e.key === 'classifier')).toBe(false);
   });
 
-  it('evicts least-recently-used first until the incoming model fits', () => {
+  it('keeps whisper/tts sidecars resident when the generation model fits alongside them', () => {
     const current = [
-      R('whisper', 'whisper', 150, 30), // newest
-      R('tts', 'tts', 120, 10),         // oldest → evicted first
+      R('whisper', 'whisper', 150, 30),
+      R('tts', 'tts', 120, 10),
     ];
-    const plan = planEviction(current, { key: 'txt', type: 'text', sizeMB: 800 }, 900);
-    // budget 900: need to free until used+800 <= 900 → used must be <=100.
-    // start used=270; evict tts(oldest)->150; still >100; evict whisper->0; fits.
-    expect(plan.evict.map(e => e.key)).toEqual(['tts', 'whisper']);
+    // 270 (sidecars) + 600 (text) = 870 <= 900 → everything fits, nothing evicted.
+    const plan = planEviction(current, { key: 'txt', type: 'text', sizeMB: 600 }, 900);
+    expect(plan.evict).toEqual([]);
     expect(plan.fits).toBe(true);
+  });
+
+  it('evicts sidecars only as a last resort, after non-sidecars, to fit a generation model', () => {
+    const current = [
+      R('cls', 'classifier', 100, 5),   // non-sidecar, unpinned → evicted first
+      R('whisper', 'whisper', 150, 30),
+      R('tts', 'tts', 120, 10),          // sidecar, oldest → evicted before whisper
+    ];
+    // used 370 + text 800 = 1170 > 900. Evict non-sidecar (cls) first, then
+    // sidecars LRU (tts then whisper) until it fits.
+    const plan = planEviction(current, { key: 'txt', type: 'text', sizeMB: 800 }, 900);
+    expect(plan.evict.map(e => e.key)).toEqual(['cls', 'tts', 'whisper']);
+    expect(plan.fits).toBe(true);
+  });
+
+  it('does not evict anything when loading a small sidecar', () => {
+    const current = [R('txt', 'text', 800, 1)];
+    const plan = planEviction(current, { key: 'whisper', type: 'whisper', sizeMB: 150 }, 900);
+    // Loading whisper coexists with the text model rather than swapping it out,
+    // even though it overshoots the budget.
+    expect(plan.evict).toEqual([]);
   });
 
   it('charges no cost for a model that is already resident', () => {

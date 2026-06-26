@@ -5,11 +5,13 @@
  * at once, so before loading a model we evict others to fit a RAM budget:
  *  - text and image generation models are mutually exclusive — loading one
  *    evicts the other (each plus its working set is too heavy to keep both);
- *  - otherwise it's budget-driven: small models (whisper/tts/classifier)
- *    co-reside as long as they fit;
+ *  - speech (whisper) and TTS are small co-resident sidecars: they stay warm
+ *    alongside whichever generation model is loaded and loading one never evicts
+ *    anything; they're evicted only as a last resort when a heavy generation
+ *    model can't otherwise fit (only text↔image are mutually exclusive);
  *  - pinned models (e.g. the ~100MB SMOL classifier) are never evicted;
- *  - when the incoming model doesn't fit, evict least-recently-used until it
- *    does (so a constrained device naturally ends up with one model).
+ *  - when an incoming generation model doesn't fit, evict least-recently-used
+ *    (non-sidecar, non-pinned) residents until it does.
  *
  * See docs/design/MODEL_ROUTING.md §4–5.2. Pure + deterministic so the policy
  * can be unit-tested without touching native model loading.
@@ -75,9 +77,14 @@ export function planEviction(
       .reduce((sum, r) => sum + r.sizeMB, 0);
   const incomingCostMB = alreadyResident ? 0 : incoming.sizeMB;
 
+  // Speech (whisper) and TTS are small always-resident sidecars: never evicted
+  // for capacity, and they never trigger eviction of the active generation model.
+  // Only text and image are heavy enough to swap.
+  const SIDECAR_TYPES = new Set<ResidentType>(['whisper', 'tts']);
+
   // 1. Mutual exclusion for generation models: text and image never co-reside.
   // Each one (plus its runtime working set) is too heavy to keep both warm, so
-  // loading one always evicts the other. Whisper/TTS/classifier are small and
+  // loading one always evicts the other. Sidecars/classifier are small and
   // unaffected. Pinned residents are still never evicted.
   const GENERATION_TYPES = new Set<ResidentType>(['text', 'image']);
   if (GENERATION_TYPES.has(incoming.type)) {
@@ -89,13 +96,26 @@ export function planEviction(
     }
   }
 
-  // 2. Evict least-recently-used (non-pinned) until the incoming model fits.
-  while (usedMB() + incomingCostMB > budgetMB) {
-    const candidate = current
-      .filter(r => !r.pinned && r.key !== incoming.key && !isEvicted(r))
-      .sort((a, b) => a.lastUsedAt - b.lastUsedAt)[0];
-    if (!candidate) break; // nothing left to evict
-    evict.push(candidate);
+  // 2. Fit a heavy (generation) incoming model within budget. Evict
+  // least-recently-used non-pinned residents, but prefer non-sidecars and treat
+  // the STT/TTS sidecars as a LAST RESORT: on a roomy device they stay warm
+  // alongside the generation model, yet a big model can still reclaim their RAM
+  // (they're cheap to reload) instead of overshooting the budget and risking an
+  // OOM. Loading a sidecar itself never evicts the active generation model — it
+  // just coexists. Pinned residents are never evicted.
+  if (GENERATION_TYPES.has(incoming.type)) {
+    while (usedMB() + incomingCostMB > budgetMB) {
+      const candidate = current
+        .filter(r => !r.pinned && r.key !== incoming.key && !isEvicted(r))
+        .sort((a, b) => {
+          const aSidecar = SIDECAR_TYPES.has(a.type) ? 1 : 0;
+          const bSidecar = SIDECAR_TYPES.has(b.type) ? 1 : 0;
+          if (aSidecar !== bSidecar) return aSidecar - bSidecar; // non-sidecars first
+          return a.lastUsedAt - b.lastUsedAt;                    // then least-recently-used
+        })[0];
+      if (!candidate) break; // nothing left to evict
+      evict.push(candidate);
+    }
   }
 
   return {
