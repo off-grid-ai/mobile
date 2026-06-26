@@ -60,7 +60,10 @@ class WhisperService {
         url: model.url,
         fileName,
         modelId: `whisper-${modelId}`,
-        totalBytes: 0,
+        // WHISPER_MODELS sizes are in MB; seed totalBytes so progress renders
+        // before the first byte arrives. The native layer refines this from the
+        // server's Content-Length once the download starts.
+        totalBytes: model.size * 1024 * 1024,
       },
       destPath,
       onProgress: onProgress
