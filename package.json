@@ -5,6 +5,7 @@
   "scripts": {
     "android": "react-native run-android --mode=debug --appId ai.offgridmobile.dev",
     "ios": "react-native run-ios",
+    "ios:device": "./scripts/ios-device.sh",
     "lint": "eslint . && npm run lint:android && npm run lint:ios",
     "lint:android": "cd android && ./gradlew :app:lintDebug",
     "lint:ios": "swiftlint lint --quiet || echo 'SwiftLint not installed, skipping iOS lint'",
