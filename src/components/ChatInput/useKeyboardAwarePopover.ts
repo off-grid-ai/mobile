@@ -48,13 +48,23 @@ export function useKeyboardAwarePopover() {
             Keyboard.dismiss();
 
             let cancelled = false;
+            let settleTimer: ReturnType<typeof setTimeout> | null = null;
             const sub = Keyboard.addListener('keyboardDidHide', () => {
                 sub.remove();
                 isWaitingForKeyboard.current = false;
-                if (!cancelled) requestAnimationFrame(measureAndShow);
+                // keyboardDidHide fires when the keyboard is gone, but the input
+                // bar (KeyboardAvoidingView) is still animating back down.
+                // Measuring on the next frame catches it mid-animation and anchors
+                // the popover where the raised bar was (floating mid-screen). Wait
+                // for the bar to settle before measuring.
+                if (!cancelled) settleTimer = setTimeout(measureAndShow, 300);
             });
 
-            pendingSubRef.current = () => { cancelled = true; sub.remove(); };
+            pendingSubRef.current = () => {
+                cancelled = true;
+                sub.remove();
+                if (settleTimer) clearTimeout(settleTimer);
+            };
         } else {
             measureAndShow();
         }
