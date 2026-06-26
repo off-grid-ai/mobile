@@ -98,7 +98,7 @@
     "jest": "^29.6.3",
     "lint-staged": "^15.5.2",
     "prettier": "2.8.8",
-    "react-dom": "^19.2.0",
+    "react-dom": "19.2.0",
     "react-test-renderer": "19.2.0",
     "sonar-scanner": "^3.1.0",
     "typescript": "^5.8.3"
@@ -111,7 +111,6 @@
   },
   "op-sqlite": {},
   "overrides": {
-    "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react": "19.2.0"
   }
 }
