@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Platform } from 'react-native';
 import { AlertState, showAlert, hideAlert, initialAlertState } from '../../components/CustomAlert';
 import { useAppStore } from '../../stores';
 import { useDownloadStore, DownloadEntry } from '../../stores/downloadStore';
@@ -9,14 +8,13 @@ import {
   hardwareService,
   huggingFaceService,
   backgroundDownloadService,
-  whisperService,
 } from '../../services';
 import { useVoiceDownloadItems } from './useVoiceDownloadItems';
 import { DownloadedModel, ONNXImageModel } from '../../types';
 import { DownloadItem, formatBytes } from './items';
 import logger from '../../utils/logger';
-import { cancelSyntheticImageDownload, proceedWithDownload } from '../ModelsScreen/imageDownloadActions';
-import { resumeImageDownload } from '../ModelsScreen/imageDownloadResume';
+import { cancelSyntheticImageDownload } from '../ModelsScreen/imageDownloadActions';
+import { parseEntryMetadata, runRetryDownload } from './retryHandlers';
 
 export interface UseDownloadManagerResult {
   activeItems: DownloadItem[];
@@ -29,29 +27,6 @@ export interface UseDownloadManagerResult {
   handleRepairVision: (item: DownloadItem) => void;
   isRepairingVision: (modelId: string) => boolean;
   totalStorageUsed: number;
-}
-
-async function resumeImageFinalization(
-  entry: DownloadEntry,
-  setAlertState: (state: AlertState) => void,
-): Promise<void> {
-  const appState = useAppStore.getState();
-  await resumeImageDownload(entry, {
-    addDownloadedImageModel: appState.addDownloadedImageModel,
-    activeImageModelId: appState.activeImageModelId,
-    setActiveImageModelId: appState.setActiveImageModelId,
-    setAlertState,
-    triedImageGen: appState.onboardingChecklist.triedImageGen,
-  });
-}
-
-function parseEntryMetadata(entry: DownloadEntry): Record<string, any> | null {
-  if (!entry.metadataJson) return null;
-  try {
-    return JSON.parse(entry.metadataJson);
-  } catch {
-    return null;
-  }
 }
 
 function getActiveItemModelId(entry: DownloadEntry, isImage: boolean): string {
@@ -116,156 +91,6 @@ function entryToActiveItem(entry: DownloadEntry): DownloadItem {
     reason: entry.errorMessage,
     reasonCode: entry.errorCode as import('../../types').BackgroundDownloadReasonCode | undefined,
   };
-}
-
-async function reattachRetriedTextDownload(
-  item: DownloadItem,
-  setDownloadedModels: (models: DownloadedModel[]) => void,
-): Promise<void> {
-  logger.log('[DownloadDebug] Reattaching text download finalizer after retry', {
-    modelId: item.modelId,
-    fileName: item.fileName,
-    downloadId: item.downloadId,
-  });
-  modelManager.watchDownload(
-    item.downloadId!,
-    async () => {
-      logger.log('[DownloadDebug] Retried text download finalized', {
-        modelId: item.modelId,
-        fileName: item.fileName,
-        downloadId: item.downloadId,
-      });
-      const models = await modelManager.getDownloadedModels();
-      setDownloadedModels(models);
-      const modelKey = useDownloadStore.getState().downloadIdIndex[item.downloadId!] ?? '';
-      if (modelKey) {
-        useDownloadStore.getState().remove(modelKey);
-      }
-    },
-    (error: Error) => {
-      logger.error('[DownloadManager] Retried text download failed:', error);
-      useDownloadStore.getState().setStatus(item.downloadId!, 'failed', {
-        message: error.message,
-      });
-    },
-  );
-}
-
-async function retryFailedMmProj(entry: DownloadEntry | undefined): Promise<boolean> {
-  if (!entry?.mmProjDownloadId || entry.mmProjStatus !== 'failed') return false;
-  useDownloadStore.getState().setStatus(entry.mmProjDownloadId, 'pending');
-  try {
-    logger.log('[DownloadDebug] Retrying failed mmproj sidecar', {
-      modelKey: entry.modelKey,
-      modelId: entry.modelId,
-      mainDownloadId: entry.downloadId,
-      mmProjDownloadId: entry.mmProjDownloadId,
-    });
-    await backgroundDownloadService.retryDownload(entry.mmProjDownloadId);
-    return true;
-  } catch (error) {
-    logger.warn('[DownloadManager] Failed to retry mmproj sidecar:', error);
-    useDownloadStore.getState().setStatus(entry.mmProjDownloadId, 'failed', {
-      message: error instanceof Error ? error.message : String(error),
-    });
-    return false;
-  }
-}
-
-async function retryAndroidDownload(item: DownloadItem, entry: DownloadEntry | undefined, setDownloadedModels: (models: DownloadedModel[]) => void): Promise<void> {
-  const downloadId = item.downloadId as string;
-  useDownloadStore.getState().setStatus(downloadId, 'pending');
-  await backgroundDownloadService.retryDownload(downloadId);
-  if (item.modelType === 'text') {
-    const mmProjRetried = await retryFailedMmProj(entry);
-    if (mmProjRetried) {
-      modelManager.resetMmProjForRetry(downloadId);
-    }
-    await reattachRetriedTextDownload(item, setDownloadedModels);
-  }
-}
-
-async function retryIosImageDownload(entry: DownloadEntry, setAlertState: (s: AlertState) => void): Promise<void> {
-  const meta = parseEntryMetadata(entry);
-  if (!meta) return;
-  const isZip = meta.imageDownloadType === 'zip';
-  if (isZip && !meta.imageModelDownloadUrl) {
-    logger.error('[DownloadManager] retryIosImageDownload: missing imageModelDownloadUrl for zip download', { modelId: entry.modelId });
-    return;
-  }
-  // Cancel the stale native row so it doesn't accumulate in the native DB across
-  // retries. proceedWithDownload starts a fresh row — without this the old failed
-  // row stays persisted and re-hydrates after the next app kill.
-  await backgroundDownloadService.cancelDownload(entry.downloadId).catch(() => {});
-  const modelId = entry.modelId.replace('image:', '');
-  const appState = useAppStore.getState();
-  const deps = {
-    addDownloadedImageModel: appState.addDownloadedImageModel,
-    activeImageModelId: appState.activeImageModelId,
-    setActiveImageModelId: appState.setActiveImageModelId,
-    setAlertState,
-    triedImageGen: appState.onboardingChecklist.triedImageGen,
-  };
-  await proceedWithDownload({
-    id: modelId,
-    name: meta.imageModelName,
-    description: meta.imageModelDescription,
-    downloadUrl: meta.imageModelDownloadUrl ?? '',
-    size: meta.imageModelSize,
-    style: meta.imageModelStyle,
-    backend: meta.imageModelBackend,
-    attentionVariant: meta.imageModelAttentionVariant,
-    huggingFaceRepo: meta.imageModelRepo,
-    huggingFaceFiles: meta.imageModelHuggingFaceFiles,
-    coremlFiles: meta.imageModelCoremlFiles,
-    repo: meta.imageModelRepo,
-  }, deps);
-}
-
-async function retryIosTextDownload(
-  item: DownloadItem,
-  entry: DownloadEntry,
-  setDownloadedModels: (models: DownloadedModel[]) => void,
-): Promise<void> {
-  const meta = parseEntryMetadata(entry);
-  const mmProjFile = entry.mmProjFileName && entry.mmProjFileSize && meta?.mmProjDownloadUrl
-    ? { name: entry.mmProjFileName, size: entry.mmProjFileSize, downloadUrl: meta.mmProjDownloadUrl }
-    : undefined;
-  const file = {
-    name: entry.fileName,
-    size: entry.totalBytes,
-    quantization: entry.quantization,
-    downloadUrl: huggingFaceService.getDownloadUrl(entry.modelId, entry.fileName),
-    ...(mmProjFile ? { mmProjFile } : {}),
-  };
-  const info = await modelManager.downloadModelBackground(entry.modelId, file);
-  await reattachRetriedTextDownload({ ...item, downloadId: info.downloadId }, setDownloadedModels);
-}
-
-/**
- * Retry a failed transcription (Whisper/STT) download on either platform.
- *
- * STT downloads aren't restartable via the native retry: on iOS there was no STT
- * branch at all, and a failed STT row can linger in the store with a dead
- * downloadId (the background promise can hang on failure, so whisperService never
- * removes its entry). whisperService.downloadModel refuses to start while that
- * entry exists, so we cancel the dead native task and clear the stale row, then
- * re-invoke a fresh download.
- */
-async function retryWhisperDownload(item: DownloadItem): Promise<void> {
-  const modelKey = item.modelKey ?? `${item.modelId}/${item.fileName}`;
-  if (item.downloadId) {
-    await backgroundDownloadService.cancelDownload(item.downloadId).catch(() => {});
-  }
-  useDownloadStore.getState().remove(modelKey);
-  // The store keys STT models as `whisper-<id>`; downloadModel wants the bare id.
-  const whisperId = item.modelId.replace(/^whisper-/, '');
-  // Kick off a fresh download but don't block the retry tap on full completion —
-  // whisperService re-registers the store row and the global progress listeners
-  // drive the UI. Surface a failure via the logger; the row reflects it too.
-  whisperService.downloadModel(whisperId).catch((err) => {
-    logger.warn('[DownloadManager] STT retry download failed:', err);
-  });
 }
 
 /** Map the text + image model stores into completed Download Manager items. */
@@ -370,37 +195,8 @@ export function useDownloadManager(): UseDownloadManagerResult {
     // stale/missing) downloadId; every other path retries by id.
     if (!item.downloadId && item.modelType !== 'stt') return;
     const modelKey = item.modelKey ?? `${item.modelId}/${item.fileName}`;
-    const entry = downloads[modelKey];
     try {
-      logger.log('[DownloadDebug] Manual retry requested', { modelKey, modelId: item.modelId, fileName: item.fileName, modelType: item.modelType, mainDownloadId: item.downloadId, mmProjDownloadId: entry?.mmProjDownloadId, status: item.status, mmProjStatus: entry?.mmProjStatus });
-
-      const hasAllBytes = item.fileSize > 0 && item.bytesDownloaded >= item.fileSize;
-      if (item.modelType === 'image' && entry) {
-        let nativeMainStatus: string | undefined;
-        try {
-          const activeRows = await backgroundDownloadService.getActiveDownloads();
-          nativeMainStatus = activeRows.find(row => row.downloadId === item.downloadId)?.status;
-        } catch {
-          // Best-effort native state check only.
-        }
-        if (item.status === 'processing' || hasAllBytes || nativeMainStatus === 'completed') {
-          await resumeImageFinalization(entry, setAlertState);
-          return;
-        }
-      }
-
-      if (item.modelType === 'stt') {
-        // Transcription models re-download through whisperService on both
-        // platforms (the native retry path doesn't cover STT).
-        await retryWhisperDownload(item);
-      } else if (Platform.OS === 'android') {
-        await retryAndroidDownload(item, entry, setDownloadedModels);
-      } else if (Platform.OS === 'ios' && item.modelType === 'image' && entry) {
-        await retryIosImageDownload(entry, setAlertState);
-      } else if (Platform.OS === 'ios' && item.modelType === 'text' && entry) {
-        await retryIosTextDownload(item, entry, setDownloadedModels);
-      }
-      backgroundDownloadService.startProgressPolling();
+      await runRetryDownload(item, downloads[modelKey], { setDownloadedModels, setAlertState });
     } catch (error: any) {
       logger.error('[DownloadManager] Failed to retry download:', error);
       const errorMessage = error?.message || 'Retry failed. Please remove and re-download.';
