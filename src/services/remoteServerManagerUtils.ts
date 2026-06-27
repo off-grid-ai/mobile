@@ -84,6 +84,12 @@ export function detectToolCallingCapability(modelId: string): boolean {
 // ---------------------------------------------------------------------------
 
 export async function createProviderForServerImpl(server: RemoteServer): Promise<void> {
+  // Whisper servers don't expose an LLM API - they're used only for
+  // speech-to-text via the always-on recorder. Skip provider registration.
+  if (server.providerType === 'whisper') {
+    logger.log('[RemoteServerManager] skipping LLM provider for whisper server:', server.name);
+    return;
+  }
   const apiKey = await getApiKeyImpl(server.id);
   logger.log('[RemoteServerManager] createProvider:', server.name, '| endpoint:', server.endpoint, '| hasApiKey:', !!apiKey);
   const provider = createOpenAIProvider(server.id, server.endpoint, { apiKey: apiKey || undefined });
