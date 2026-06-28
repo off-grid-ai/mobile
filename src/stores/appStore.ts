@@ -195,13 +195,17 @@ const MCP_BOOST_MAX_OUTPUT_TOKENS = 8192;
 function migrateBoostedContext(merged: any): void {
   const s = merged.settings;
   if (!s) return;
-  if (s.contextLength >= MCP_BOOST_CTX_CEILING) {
+  // Match the EXACT values the boost wrote, not `>=`. The boost set these to
+  // precise constants; a `>=` test also clobbers a user who legitimately chose a
+  // large context/maxTokens above the default, which this one-time migration must
+  // not touch.
+  if (s.contextLength === MCP_BOOST_CTX_CEILING) {
     s.contextLength = DEFAULT_SETTINGS.contextLength;
     // maxTokens was raised alongside contextLength by the boost; only reset it when the
-    // boost was applied, so a legitimately-large user maxTokens isn't clobbered.
-    if (s.maxTokens >= MCP_BOOST_MAX_OUTPUT_TOKENS) s.maxTokens = DEFAULT_SETTINGS.maxTokens;
+    // boost's exact value is present, so a legitimately-large user maxTokens isn't clobbered.
+    if (s.maxTokens === MCP_BOOST_MAX_OUTPUT_TOKENS) s.maxTokens = DEFAULT_SETTINGS.maxTokens;
   }
-  if (s.liteRTMaxTokens >= MCP_BOOST_CTX_CEILING) {
+  if (s.liteRTMaxTokens === MCP_BOOST_CTX_CEILING) {
     s.liteRTMaxTokens = DEFAULT_SETTINGS.liteRTMaxTokens;
   }
 }

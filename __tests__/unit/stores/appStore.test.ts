@@ -1330,6 +1330,18 @@ describe('appStore', () => {
       expect(result.settings.contextLength).toBe(4096);
       expect(result.settings.maxTokens).toBe(8192);
     });
+
+    it('keeps a user maxTokens above the boost value even when context was boosted', () => {
+      const merge = getMergeFn();
+      const result = merge(
+        // contextLength at the exact boost ceiling, but maxTokens raised by the
+        // user beyond the boost's value — only the exact boost value is reset.
+        { settings: { contextLength: 32768, maxTokens: 16384 } },
+        useAppStore.getState(),
+      );
+      expect(result.settings.contextLength).toBe(4096); // boosted → reset
+      expect(result.settings.maxTokens).toBe(16384); // user's choice, not the boost value → kept
+    });
   });
 
 });
