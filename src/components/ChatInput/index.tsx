@@ -10,6 +10,7 @@ import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from
 import { createStyles, PILL_ICON_SIZE, ANIM_DURATION_IN, ANIM_DURATION_OUT } from './styles';
 import { QueueRow } from './Toolbar';
 import { AttachmentPreview, useAttachments } from './Attachments';
+import { useSummarizeAttachment } from './useSummarizeAttachment';
 import { useVoiceInput } from './Voice';
 import { QuickSettingsPopover, AttachPickerPopover } from './Popovers';
 import { useKeyboardAwarePopover } from './useKeyboardAwarePopover';
@@ -103,6 +104,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   const { attachments, removeAttachment, clearAttachments, handlePickImage, handlePickDocument, addAudioAttachment } = useAttachments(setAlertState);
   attachmentsRef.current = attachments;
+  const { summarizingId, handleSummarize } = useSummarizeAttachment();
+  const onSummarizeAttachment = async (attachment: MediaAttachment) => {
+    await handleSummarize(attachment);
+    removeAttachment(attachment.id);
+  };
   const interfaceMode = useUiModeStore((s) => s.interfaceMode);
   const isAudioMode = interfaceMode === 'audio';
 
@@ -306,7 +312,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   return (
     <View style={styles.container}>
-      <AttachmentPreview attachments={attachments} onRemove={removeAttachment} />
+      <AttachmentPreview
+        attachments={attachments}
+        onRemove={removeAttachment}
+        onSummarize={onSummarizeAttachment}
+        summarizingId={summarizingId}
+      />
       <QueueRow
         queueCount={queueCount}
         queuedTexts={queuedTexts}

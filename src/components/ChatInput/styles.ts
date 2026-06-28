@@ -49,6 +49,22 @@ export const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     textAlign: 'center' as const,
     marginTop: 4,
   },
+  summarizeButton: {
+    marginTop: 4,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  summarizeButtonText: {
+    fontSize: 9,
+    fontFamily: FONTS.mono,
+    color: colors.primary,
+  },
+  summarizeBusy: {
+    marginTop: 6,
+  },
   removeAttachment: {
     position: 'absolute' as const,
     top: 2,
