@@ -251,7 +251,10 @@ class WhisperService {
     logger.log(`[Whisper] Model file validated: ${modelPath} (${Math.round(fileSize / (1024 * 1024))} MB)`);
   }
 
-  async loadModel(modelPath: string, options?: { useGpu?: boolean; useFlashAttn?: boolean }): Promise<void> {
+  async loadModel(
+    modelPath: string,
+    options?: { useGpu?: boolean; useFlashAttn?: boolean; useCoreML?: boolean },
+  ): Promise<void> {
     wireNativeWhisperLog();
     if (this.context && this.currentModelPath !== modelPath) await this.unloadModel();
     if (this.context && this.currentModelPath === modelPath) return;
@@ -264,14 +267,20 @@ class WhisperService {
     // Native initWithModelPath calls abort() on invalid files, crashing the app.
     await this.validateModelFile(modelPath);
 
-    logger.log(`[Whisper] Loading model: ${modelPath} useGpu=${options?.useGpu ?? false} useFlashAttn=${options?.useFlashAttn ?? false}`);
+    logger.log(
+      `[Whisper] Loading model: ${modelPath} useGpu=${options?.useGpu ?? false} ` +
+        `useFlashAttn=${options?.useFlashAttn ?? false} useCoreML=${options?.useCoreML ?? false}`,
+    );
     try {
-      // useGpu/useFlashAttn are real whisper.rn runtime options but are absent
-      // from this version's WhisperContextOptions type, so pass via a cast.
+      // useGpu/useFlashAttn/useCoreMLIos are real whisper.rn runtime options but
+      // absent from this version's WhisperContextOptions type, so pass via a cast.
+      // useCoreMLIos accelerates on the Apple Neural Engine; whisper.rn falls
+      // back to CPU when the CoreML encoder assets aren't present (iOS only).
       const initOpts: Record<string, unknown> = {
         filePath: modelPath,
         useGpu: options?.useGpu ?? false,
         useFlashAttn: options?.useFlashAttn ?? false,
+        useCoreMLIos: options?.useCoreML ?? false,
       };
       this.context = await initWhisper(initOpts as unknown as Parameters<typeof initWhisper>[0]);
       this.currentModelPath = modelPath;
@@ -487,6 +496,13 @@ class WhisperService {
       onPartial?: (text: string) => void;
       maxThreads?: number;
       nProcessors?: number;
+      // Transcribe only a window of the file (ms). Used for chunked /
+      // resumable transcription of long recordings.
+      offset?: number;
+      duration?: number;
+      // Receives the final segments with whisper.cpp timestamps. t0/t1 are in
+      // centiseconds (10ms units) relative to the processed window.
+      onSegments?: (segments: { text: string; t0: number; t1: number }[]) => void;
     }
   ): Promise<string> {
     wireNativeWhisperLog();
@@ -526,14 +542,24 @@ class WhisperService {
     if (language !== 'auto') transcribeOpts.language = language;
     if (maxThreads > 0) transcribeOpts.maxThreads = maxThreads;
     if (nProcessors > 1) transcribeOpts.nProcessors = nProcessors;
+    if (options?.offset && options.offset > 0) transcribeOpts.offset = Math.floor(options.offset);
+    if (options?.duration && options.duration > 0) transcribeOpts.duration = Math.floor(options.duration);
 
     // whisper.rn fires onNewSegments after every decoded chunk; `result` is
     // the cumulative text. nProcessors > 1 disables this in whisper.cpp
     // (parallel chunks can't stream in order), so it only fires when nProcessors == 1.
-    if (options?.onPartial) {
-      transcribeOpts.onNewSegments = (eventData: { result: string }) => {
+    if (options?.onPartial || options?.onSegments) {
+      transcribeOpts.onNewSegments = (eventData: {
+        result: string;
+        segments?: { text: string; t0: number; t1: number }[];
+      }) => {
         try {
           options.onPartial?.(eventData.result);
+          // Stream cumulative segments (with t0/t1) live, so timestamps appear
+          // as transcription progresses, not only at the end.
+          if (options.onSegments && Array.isArray(eventData.segments)) {
+            options.onSegments(eventData.segments);
+          }
         } catch (err) {
           logger.warn(`[Whisper] onPartial callback threw: ${String(err)}`);
         }
@@ -547,7 +573,20 @@ class WhisperService {
     this.fileTranscribeStop = stop;
 
     try {
-      const { result } = await promise;
+      const res = await promise;
+      const result = res.result;
+      // The local whisper.rn type shim only declares `result`; segments exist
+      // at runtime (whisper.cpp t0/t1 in centiseconds).
+      const segments = (res as unknown as {
+        segments?: { text: string; t0: number; t1: number }[];
+      }).segments;
+      if (options?.onSegments && Array.isArray(segments)) {
+        try {
+          options.onSegments(segments);
+        } catch (err) {
+          logger.warn(`[Whisper] onSegments callback threw: ${String(err)}`);
+        }
+      }
       const totalMs = Date.now() - tStart;
       logger.log(
         `[Whisper] transcribeFile DONE elapsed=${(totalMs / 1000).toFixed(1)}s ` +
