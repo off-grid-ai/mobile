@@ -191,7 +191,15 @@ class LLMService {
         logger.log('[LLM] CPU backend selected');
       }
     }
-    const initial = await initContextWithFallback(resolvedBaseParams, params.ctxLen, safeGpuLayers);
+    // Cap the INITIAL context by device RAM. The KV cache + compute buffers scale
+    // with n_ctx, so loading at the full 4096 on a 4GB phone spikes even a tiny
+    // model past the ~2GB per-process limit → jetsam kill (confirmed: 2098MB on a
+    // 4GB iPhone 12 mid-generation). The scale-down logic below never fired because
+    // it only ever RAISES context; do the floor here so the first load is safe.
+    const deviceCtxCap = getMaxContextForDevice(deviceInfo.totalMemory);
+    const safeCtx = Math.min(params.ctxLen, deviceCtxCap);
+    if (safeCtx !== params.ctxLen) logger.log(`[LLM] context capped for ${(deviceInfo.totalMemory / BYTES_PER_GB).toFixed(1)}GB RAM: ${params.ctxLen} → ${safeCtx}`);
+    const initial = await initContextWithFallback(resolvedBaseParams, safeCtx, safeGpuLayers);
     const modelMax = getModelMaxContext(initial.context);
     const userIsOnDefault = this.currentSettings.contextLength === APP_CONFIG.maxContextLength;
     if (!modelMax || !userIsOnDefault || modelMax <= initial.actualLength) return initial;
