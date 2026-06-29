@@ -106,9 +106,13 @@ describe('streaming state machine — happy path', () => {
     await flush();
 
     // Key ordered milestones of the state machine (engage → speak each → idle).
+    // Completion is now owned by the playback machine: the coordinator logs
+    // 'stream drain DONE → ended' then dispatches the `ended` event, whose single
+    // transition is 'status → idle (ended)'.
     expect(names()[0]).toBe('stream ENGAGE (engine warm)');
     expect(names()).toContain('finishStreaming: flush tail + hand off');
-    expect(names()[names().length - 1]).toBe('stream drain DONE → idle');
+    expect(names()).toContain('stream drain DONE → ended');
+    expect(names()[names().length - 1]).toBe('status → idle (ended)');
     expect((mockEngine.speak.mock.calls as unknown as string[][]).map((c) => c[0])).toEqual(['One.', 'Two.', 'Three']);
     expect(isStreamingSpeechActive()).toBe(false);
     expect(state.playbackStatus).toBe('idle');
@@ -127,7 +131,8 @@ describe('streaming state machine — engine errors never wedge', () => {
 
     expect(names()).toContain('stream segment FAILED');
     expect(names()).not.toContain('stream drain ABORT: engine wedged → release for fresh remount');
-    expect(names()).toContain('stream drain DONE → idle'); // recovered, finished
+    expect(names()).toContain('stream drain DONE → ended'); // recovered, finished
+    expect(state.playbackStatus).toBe('idle');
     expect(isStreamingSpeechActive()).toBe(false);
   });
 

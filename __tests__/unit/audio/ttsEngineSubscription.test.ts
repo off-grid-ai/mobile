@@ -95,3 +95,27 @@ describe('phase promotions still work', () => {
     expect(state.playbackStatus).toBe('paused');
   });
 });
+
+describe('completion edge — the stuck stop-button fix', () => {
+  it('ends playback when the engine settles back to ready AFTER playing', () => {
+    // The bug: nothing mapped engine 'ready' (natural completion) → idle, so status
+    // stuck on 'playing', the bottom-bar stop button stayed active, and recording was
+    // blocked until a manual stop. This is now one transition.
+    state = { currentMessageId: 'm1', playbackStatus: 'playing', playbackElapsed: 5, currentAmplitude: 0.3, error: null, playSessionId: 1 };
+    const engine = makeEngine();
+    subscribeToEngine(engine as any, deps());
+    engine.emit('phaseChange', 'ready');
+    expect(state.playbackStatus).toBe('idle');
+    expect(state.currentMessageId).toBeNull();
+    expect(state.playbackElapsed).toBe(0);
+  });
+
+  it('does NOT end on ready while still preparing (that is load-complete, not playback-complete)', () => {
+    state = { currentMessageId: 'm1', playbackStatus: 'preparing', error: null, playSessionId: 1 };
+    const engine = makeEngine();
+    subscribeToEngine(engine as any, deps());
+    engine.emit('phaseChange', 'ready');
+    expect(state.playbackStatus).toBe('preparing');
+    expect(state.currentMessageId).toBe('m1');
+  });
+});
