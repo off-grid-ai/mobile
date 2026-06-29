@@ -110,7 +110,7 @@ export const ProManageSection: React.FC = () => {
           <View style={styles.manageRow}>
             <Icon name="mail" size={14} color={colors.textMuted} />
             <Text style={styles.manageHint}>
-              To cancel or update your payment method, use the link in your Off Grid purchase or
+              To cancel or update your payment method, use the link in your Off Grid AI purchase or
               renewal email. RevenueCat sends one with every payment.
             </Text>
           </View>

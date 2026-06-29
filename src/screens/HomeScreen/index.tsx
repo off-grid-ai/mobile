@@ -131,7 +131,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <Text style={styles.title}>Off Grid</Text>
+              <Text style={styles.title}>Off Grid AI</Text>
               {showIcon && <PulsatingIcon onPress={openSheet} />}
             </View>
             <TouchableOpacity onPress={() => navigation.navigate('ProDetail')} hitSlop={8} style={styles.crownButton}>

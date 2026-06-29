@@ -3,7 +3,7 @@ import { useAppStore } from '../stores';
 import { getProLicenseInfo, type ProLicenseInfo } from '../services/proLicenseService';
 
 /**
- * Label for the Settings "Off Grid PRO" row: the upsell line when not Pro, or
+ * Label for the Settings "Off Grid AI PRO" row: the upsell line when not Pro, or
  * the subscription status (Lifetime / Monthly active-until-date) when Pro.
  */
 export function useProStatusLabel(): { hasRegisteredPro: boolean; proStatusLabel: string } {

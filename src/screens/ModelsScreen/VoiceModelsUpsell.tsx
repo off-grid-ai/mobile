@@ -27,7 +27,7 @@ export const VoiceModelsUpsell: React.FC<VoiceModelsUpsellProps> = ({ onGetPro }
       </View>
       <Text style={styles.title}>Voice models</Text>
       <Text style={styles.body}>
-        Off Grid Pro adds on-device text-to-speech. The voice model runs in your
+        Off Grid AI Pro adds on-device text-to-speech. The voice model runs in your
         phone's RAM, so what you hear is generated on the device and never sent
         anywhere. Download a voice and the assistant can speak its replies.
       </Text>

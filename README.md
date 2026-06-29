@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="src/assets/logo.png" alt="Off Grid Logo" width="120" />
+<img src="src/assets/logo.png" alt="Off Grid AI Logo" width="120" />
 
-# Off Grid
+# Off Grid AI
 
 ### The Swiss Army Knife of On-Device AI
 
@@ -35,7 +35,7 @@
 
 <div align="center">
 
-## Off Grid Pro
+## Off Grid AI Pro
 
 **Lifetime access for $50.**
 
@@ -60,7 +60,7 @@ Pair this app with **[Off Grid AI Desktop](https://github.com/off-grid-ai/deskto
 
 ## Not just another chat app
 
-Most "local LLM" apps give you a text chatbot and call it a day. Off Grid is a **complete offline AI suite** — text generation, image generation, vision AI, voice transcription, tool calling, and document analysis, all running natively on your phone's or Mac's hardware.
+Most "local LLM" apps give you a text chatbot and call it a day. Off Grid AI is a **complete offline AI suite** — text generation, image generation, vision AI, voice transcription, tool calling, and document analysis, all running natively on your phone's or Mac's hardware.
 
 ---
 
@@ -185,7 +185,7 @@ This project is tested with BrowserStack.
 
 ## Community
 
-Join the conversation on [**Slack**](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-411pbtz7r-lcOK4YCeY40vh_~FUdcvLA) — ask questions, share feedback, and connect with other Off Grid users and contributors.
+Join the conversation on [**Slack**](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-411pbtz7r-lcOK4YCeY40vh_~FUdcvLA) — ask questions, share feedback, and connect with other Off Grid AI users and contributors.
 
 ---
 
@@ -209,7 +209,7 @@ Built on the shoulders of giants:
 
 <div align="center">
 
-**Off Grid** — Your AI, your device, your data.
+**Off Grid AI** — Your AI, your device, your data.
 
 *No cloud. No data harvesting. Just AI that works anywhere.*
 

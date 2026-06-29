@@ -85,7 +85,7 @@ export const SettingsScreen: React.FC = () => {
       ? `Device: ${deviceInfo.deviceModel} (${deviceInfo.systemName} ${deviceInfo.systemVersion})`
       : 'Device: Unknown';
 
-    const subject = encodeURIComponent(`[Feedback] Off Grid v${packageJson.version}`);
+    const subject = encodeURIComponent(`[Feedback] Off Grid AI v${packageJson.version}`);
     const body = encodeURIComponent(
       `Hi,\n\n[Describe your feedback or issue here]\n\n` +
       `---\n` +
@@ -224,7 +224,7 @@ export const SettingsScreen: React.FC = () => {
             </View>
             <View style={styles.proCardText}>
               <View style={styles.proTitleRow}>
-                <Text style={styles.proNavTitle}>Off Grid PRO</Text>
+                <Text style={styles.proNavTitle}>Off Grid AI PRO</Text>
                 <View style={styles.proBadge}>
                   <Text style={styles.proBadgeText}>PRO</Text>
                 </View>
@@ -264,7 +264,7 @@ export const SettingsScreen: React.FC = () => {
               </View>
               <View style={styles.navItemContent}>
                 <Text style={styles.navItemTitle}>Share on X</Text>
-                <Text style={styles.navItemDesc}>Tell others about Off Grid</Text>
+                <Text style={styles.navItemDesc}>Tell others about Off Grid AI</Text>
               </View>
               <Icon name="external-link" size={14} color={colors.textMuted} />
             </TouchableOpacity>
