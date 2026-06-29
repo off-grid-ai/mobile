@@ -47,6 +47,43 @@ export interface EvictionPlan {
   freedMB: number;
 }
 
+// Speech (whisper), TTS, and the RAG/MCP embedding model are small sidecars.
+const SIDECAR_TYPES = new Set<ResidentType>(['whisper', 'tts', 'embedding']);
+
+// Priority (what to KEEP): text is highest, then image, then the STT/TTS/embedding
+// sidecars (equal, lowest), then pinned helpers. Eviction takes the lowest first.
+const PRIORITY: Record<ResidentType, number> = {
+  text: 3, image: 2, whisper: 1, tts: 1, embedding: 1, classifier: 0,
+};
+
+/**
+ * The SINGLE rule for "which resident to evict next" — lowest priority, then
+ * least-recently-used, honoring pinned + the sidecar restriction. Used by both the
+ * pure budget planner (planEviction) and the manager's measure-after-evict loop, so
+ * the two can never disagree on eviction order. Returns undefined when nothing is
+ * evictable (caller stops and reports fits=false).
+ */
+export function selectEvictionVictim(
+  current: Resident[],
+  incoming: IncomingModel,
+  isEvicted: (r: Resident) => boolean,
+): Resident | undefined {
+  const incomingIsSidecar = SIDECAR_TYPES.has(incoming.type);
+  return current
+    .filter(r =>
+      !r.pinned && r.key !== incoming.key && !isEvicted(r) &&
+      // A sidecar incoming may only reclaim from peer sidecars (never a
+      // generation model); a generation incoming may evict anything non-pinned.
+      (!incomingIsSidecar || SIDECAR_TYPES.has(r.type)),
+    )
+    .sort((a, b) => {
+      const pa = PRIORITY[a.type] ?? 0;
+      const pb = PRIORITY[b.type] ?? 0;
+      if (pa !== pb) return pa - pb;        // lowest priority evicted first
+      return a.lastUsedAt - b.lastUsedAt;   // then least-recently-used
+    })[0];
+}
+
 /**
  * Compute a RAM budget for resident models from total device RAM, leaving
  * headroom for the OS and the rest of the app.
@@ -86,13 +123,10 @@ export function planEviction(
       .reduce((sum, r) => sum + r.sizeMB, 0);
   const incomingCostMB = alreadyResident ? 0 : incoming.sizeMB;
 
-  // Speech (whisper), TTS, and the RAG/MCP embedding model are small sidecars.
-  const SIDECAR_TYPES = new Set<ResidentType>(['whisper', 'tts', 'embedding']);
-
   // Smart routing: KEEP as many models co-resident as the budget allows; only
   // when the incoming model doesn't fit do we evict — ONE AT A TIME, lowest
-  // priority (then least-recently-used) first. Priority (what to keep): text is
-  // highest, then image, then the STT/TTS/embedding sidecars (equal, lowest).
+  // priority (then least-recently-used) first (selectEvictionVictim, shared with
+  // the manager's measure-after-evict loop).
   //   - Text + image co-reside when they fit (e.g. image-gen with prompt
   //     enhancement keeps both warm) — no forced mutual exclusion.
   //   - A 4th model that needs room swaps out a single lowest-priority/LRU victim,
@@ -100,25 +134,8 @@ export function planEviction(
   //   - A sidecar load (mic/speaker) never evicts a heavier generation model —
   //     that would break an in-flight answer — so it may only reclaim from peer
   //     sidecars; if that's not enough it reports fits=false and the caller bails.
-  const PRIORITY: Record<ResidentType, number> = {
-    text: 3, image: 2, whisper: 1, tts: 1, embedding: 1, classifier: 0,
-  };
-  const incomingIsSidecar = SIDECAR_TYPES.has(incoming.type);
-
   while (usedMB() + incomingCostMB > budgetMB) {
-    const victim = current
-      .filter(r =>
-        !r.pinned && r.key !== incoming.key && !isEvicted(r) &&
-        // A sidecar incoming may only reclaim from peer sidecars (never a
-        // generation model); a generation incoming may evict anything non-pinned.
-        (!incomingIsSidecar || SIDECAR_TYPES.has(r.type)),
-      )
-      .sort((a, b) => {
-        const pa = PRIORITY[a.type] ?? 0;
-        const pb = PRIORITY[b.type] ?? 0;
-        if (pa !== pb) return pa - pb;        // lowest priority evicted first
-        return a.lastUsedAt - b.lastUsedAt;   // then least-recently-used
-      })[0];
+    const victim = selectEvictionVictim(current, incoming, isEvicted);
     if (!victim) break; // nothing evictable left → fits stays false, caller bails
     evict.push(victim);
   }
