@@ -246,6 +246,9 @@ class ActiveModelService {
       key: 'image',
       type: 'image',
       sizeMB: Math.round((hardwareService.estimateImageModelRam(model) || 0) / (1024 * 1024)),
+      // CoreML/ONNX image weights load into dirty (jetsam-counted) memory — gate on
+      // real free RAM too, unlike mmap'd GGUF text. (See ResidentSpec.dirtyMemory.)
+      dirtyMemory: true,
     });
     if (!fits) {
       return {

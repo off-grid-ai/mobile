@@ -16,10 +16,12 @@ import { planEviction, computeBudgetMB, Resident, ResidentType } from './policy'
 
 type UnloadFn = () => Promise<void>;
 
-/** Keep this much real RAM free for the OS and other apps (never hand it to models). */
-const AVAILABILITY_HEADROOM_MB = 1024;
 /** Hard floor so a small model can always load, even under memory pressure. */
 const MIN_BUDGET_MB = 1024;
+/** For DIRTY-memory models (CoreML/ONNX image): keep this much real RAM free for the
+ *  OS + other apps so a dirty load never spills into swap. (Not applied to mmap'd
+ *  GGUF — their clean weights don't pressure this limit.) */
+const DIRTY_AVAILABILITY_HEADROOM_MB = 1024;
 /** Small, cheaply-reloadable models reclaimed first under memory pressure. */
 const SIDECAR_TYPES = new Set<ResidentType>(['whisper', 'tts', 'embedding']);
 
@@ -38,6 +40,17 @@ export interface ResidentSpec {
   /** Owner's veto: returns false while the model is in use (e.g. TTS playing) so
    *  residency never evicts it mid-use. Absent → always evictable. */
   canEvict?: () => boolean;
+  /**
+   * Whether the model's weights occupy DIRTY (anonymous, jetsam-counted) memory —
+   * the gap modeled as DATA, not a Platform/type branch in the budget.
+   *  - false (default): mmap-backed GGUF (llama text / whisper). Weights are CLEAN,
+   *    file-backed pages the OS pages freely; they do NOT pressure os_proc_available.
+   *    Bounded by PHYSICAL RAM only — so an 8GB GGUF loads on a 12GB phone.
+   *  - true: CoreML/ONNX image weights load into dirty/GPU memory that DOES count
+   *    against the jetsam limit → also bounded by real free RAM (os_proc_available)
+   *    so it never loads into swap.
+   */
+  dirtyMemory?: boolean;
 }
 
 export interface EnsureResult {
@@ -120,16 +133,37 @@ class ModelResidencyManager {
 
   getBudgetMB(): number {
     if (this.budgetOverrideMB != null) return this.budgetOverrideMB;
-    // Two caps, take the smaller:
-    //  - physical: a fraction of total RAM (the absolute ceiling).
-    //  - dynamic: real free RAM right now + what our own resident models would
-    //    free if evicted, minus headroom. This is what stops loading into swap —
-    //    the physical cap alone trusted total RAM the device didn't actually have
-    //    free (the OOM-freeze cause). Floored so a small model always loads.
+    // The budget is the device + platform PHYSICAL-RAM cap (a fraction of total RAM).
+    //
+    // We do NOT min() this with os_proc_available_memory. That metric is the DIRTY
+    // (anonymous) memory headroom before jetsam — but llama.cpp mmaps the GGUF, so a
+    // model's weights are CLEAN, file-backed pages that the OS pages in/out freely and
+    // that do NOT count against the jetsam limit. Budgeting the full model size against
+    // the dirty headroom was a category error: it refused an 8GB mmap'd model (whose
+    // real dirty cost is ~1-2GB of KV+compute) on a 12GB phone that runs it fine. A
+    // GGUF's loadability is bounded by physical RAM (its weights fit as clean pages),
+    // which is exactly computeBudgetMB. Floored so a small model always loads.
     const physicalCapMB = computeBudgetMB(hardwareService.getTotalMemoryGB() * 1024);
+    return Math.round(Math.max(MIN_BUDGET_MB, physicalCapMB));
+  }
+
+  /**
+   * Budget for loading a SPECIFIC model, branching on its memory characteristic
+   * (data, not type): mmap-backed GGUF is bounded by physical RAM only; a dirty
+   * (CoreML/ONNX image) model is ALSO bounded by real free RAM (os_proc_available)
+   * + what evicting our own resident models would free, so it never loads into swap.
+   */
+  private budgetForSpec(spec: ResidentSpec): number {
+    if (this.budgetOverrideMB != null) return this.budgetOverrideMB;
+    const physicalCapMB = computeBudgetMB(hardwareService.getTotalMemoryGB() * 1024);
+    if (!spec.dirtyMemory) {
+      // mmap'd: physical RAM is the ceiling (clean, file-backed weights).
+      return Math.round(Math.max(MIN_BUDGET_MB, physicalCapMB));
+    }
+    // dirty: also gate on real free RAM (+ evictable residents − OS headroom).
     const availableMB = hardwareService.getAvailableMemoryGB() * 1024;
     const residentMB = [...this.residents.values()].reduce((sum, r) => sum + r.sizeMB, 0);
-    const dynamicMB = availableMB + residentMB - AVAILABILITY_HEADROOM_MB;
+    const dynamicMB = availableMB + residentMB - DIRTY_AVAILABILITY_HEADROOM_MB;
     return Math.round(Math.max(MIN_BUDGET_MB, Math.min(physicalCapMB, dynamicMB)));
   }
 
@@ -179,15 +213,7 @@ class ModelResidencyManager {
     // Re-read real free RAM so the decision reflects current pressure, not a stale
     // boot-time snapshot (other apps may have grabbed memory since).
     await hardwareService.refreshMemoryInfo().catch(() => {});
-    // Compute the budget ONCE, crediting ALL current residents (getBudgetMB adds
-    // residentMB to real free RAM — i.e. "free RAM if we evicted our own models"),
-    // then plan eviction against that single budget. We do NOT re-read available
-    // mid-eviction: getBudgetMB credits residentMB, so deleting a resident drops the
-    // budget faster than os_proc_available_memory reflects the freed RAM — that race
-    // collapsed the budget and falsely refused a model that genuinely fits (e.g.
-    // E2B in voice mode after STT). planEviction simulates eviction against the
-    // stable budget instead, which is why ordinary loads succeed.
-    const budgetMB = this.getBudgetMB();
+    const budgetMB = this.budgetForSpec(spec);
     const residents = this.planningResidents();
     const plan = planEviction(residents, spec, budgetMB);
     // [MEM-SM] trace (kept forever): the exact numbers behind every fit decision —

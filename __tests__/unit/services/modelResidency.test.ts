@@ -299,19 +299,17 @@ describe('ModelResidencyManager', () => {
     beforeEach(() => { modelResidencyManager._reset(); });
     afterEach(() => jest.restoreAllMocks());
 
-    it('loads by evicting a resident even when instantaneous free RAM is low (credits the freed model)', async () => {
+    it('budgets against PHYSICAL RAM, not os_proc dirty headroom — a big mmap GGUF loads on a high-RAM phone even when instantaneous available is low', async () => {
       modelResidencyManager.setBudgetOverrideMB(null);
-      jest.spyOn(hardwareService, 'getTotalMemoryGB').mockReturnValue(8);
+      jest.spyOn(hardwareService, 'getTotalMemoryGB').mockReturnValue(12);
+      jest.spyOn(hardwareService, 'getAvailableMemoryGB').mockReturnValue(2); // low DIRTY headroom (os_proc)
       jest.spyOn(hardwareService, 'refreshMemoryInfo').mockResolvedValue(undefined as never);
-      jest.spyOn(hardwareService, 'getAvailableMemoryGB').mockReturnValue(0.5); // transiently low (post-STT)
-      const unloadWhisper = jest.fn().mockResolvedValue(undefined);
-      modelResidencyManager.register({ key: 'whisper', type: 'whisper', sizeMB: 2500 }, unloadWhisper, 1);
-      const { evicted, fits } = await modelResidencyManager.makeRoomFor({ key: 'text', type: 'text', sizeMB: 1500 });
-      // The budget credits the evictable whisper, so text fits after evicting it —
-      // NOT refused just because instantaneous free RAM dipped (the E2B-in-voice regression).
+      // An 8GB GGUF fits a 12GB phone's physical cap (0.78*12 ≈ 9.6GB). Its mmap'd
+      // weights are clean/file-backed, so the low instantaneous os_proc available
+      // (dirty headroom) must NOT refuse it — the bug that broke E2B/E4B on a 12GB phone.
+      const { fits, evicted } = await modelResidencyManager.makeRoomFor({ key: 'text', type: 'text', sizeMB: 8000 });
       expect(fits).toBe(true);
-      expect(evicted).toEqual(['whisper']);
-      expect(unloadWhisper).toHaveBeenCalledTimes(1);
+      expect(evicted).toEqual([]);
     });
 
     it("does NOT evict (don't strand) when the model can't fit even after full eviction", async () => {
