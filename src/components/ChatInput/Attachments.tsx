@@ -156,49 +156,67 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({ attachment
       contentContainerStyle={styles.attachmentsContent}
       showsHorizontalScrollIndicator={false}
     >
-      {attachments.map(attachment => (
-        <View key={attachment.id} testID={`attachment-preview-${attachment.id}`} style={styles.attachmentPreview}>
-          {attachment.type === 'image' ? (
-            <Image
-              testID={`attachment-image-${attachment.id}`}
-              source={{ uri: attachment.uri }}
-              style={styles.attachmentImage}
-            />
-          ) : attachment.type === 'audio' ? (
-            <View testID={`audio-preview-${attachment.id}`} style={styles.documentPreview}>
-              <Icon name="mic" size={24} color={colors.primary} />
-              <Text style={styles.documentName} numberOfLines={2}>Voice</Text>
-            </View>
-          ) : (
-            <View testID={`document-preview-${attachment.id}`} style={styles.documentPreview}>
-              <Icon name="file-text" size={24} color={colors.primary} />
-              <Text style={styles.documentName} numberOfLines={2}>
-                {attachment.fileName || 'Document'}
-              </Text>
-              {onSummarize && attachment.textContent ? (
-                summarizingId === attachment.id ? (
-                  <ActivityIndicator size="small" color={colors.primary} style={styles.summarizeBusy} />
-                ) : (
-                  <TouchableOpacity
-                    testID={`summarize-attachment-${attachment.id}`}
-                    style={styles.summarizeButton}
-                    onPress={() => onSummarize(attachment)}
-                  >
-                    <Text style={styles.summarizeButtonText}>Summarize</Text>
-                  </TouchableOpacity>
-                )
-              ) : null}
-            </View>
-          )}
-          <TouchableOpacity
-            testID={`remove-attachment-${attachment.id}`}
-            style={styles.removeAttachment}
-            onPress={() => onRemove(attachment.id)}
+      {attachments.map(attachment => {
+        const canSummarize = !!onSummarize && !!attachment.textContent && attachment.type !== 'image';
+        const isBusy = summarizingId === attachment.id;
+        return (
+          <View
+            key={attachment.id}
+            testID={`attachment-preview-${attachment.id}`}
+            style={[styles.attachmentPreview, canSummarize && styles.attachmentPreviewDoc]}
           >
-            <Text style={styles.removeAttachmentText}>&times;</Text>
-          </TouchableOpacity>
-        </View>
-      ))}
+            {attachment.type === 'image' ? (
+              <Image
+                testID={`attachment-image-${attachment.id}`}
+                source={{ uri: attachment.uri }}
+                style={styles.attachmentImage}
+              />
+            ) : attachment.type === 'audio' ? (
+              <View testID={`audio-preview-${attachment.id}`} style={styles.documentPreview}>
+                <Icon name="mic" size={24} color={colors.primary} />
+                <Text style={styles.documentName} numberOfLines={2}>Voice</Text>
+              </View>
+            ) : (
+              <View
+                testID={`document-preview-${attachment.id}`}
+                style={[styles.documentPreview, canSummarize && styles.documentPreviewDoc]}
+              >
+                <View style={styles.documentNameRow}>
+                  <Icon name="file-text" size={18} color={colors.primary} />
+                  <Text style={styles.documentName} numberOfLines={1}>
+                    {attachment.fileName || 'Document'}
+                  </Text>
+                </View>
+                {canSummarize ? (
+                  isBusy ? (
+                    <View style={styles.summarizeBusy}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={styles.summarizeBusyText}>Summarizing</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      testID={`summarize-attachment-${attachment.id}`}
+                      style={styles.summarizeButton}
+                      onPress={() => onSummarize!(attachment)}
+                      activeOpacity={0.8}
+                    >
+                      <Icon name="zap" size={11} color={colors.background} />
+                      <Text style={styles.summarizeButtonText}>Summarize</Text>
+                    </TouchableOpacity>
+                  )
+                ) : null}
+              </View>
+            )}
+            <TouchableOpacity
+              testID={`remove-attachment-${attachment.id}`}
+              style={styles.removeAttachment}
+              onPress={() => onRemove(attachment.id)}
+            >
+              <Text style={styles.removeAttachmentText}>&times;</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
     </ScrollView>
   );
 };

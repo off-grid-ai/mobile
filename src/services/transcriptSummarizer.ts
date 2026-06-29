@@ -24,6 +24,9 @@ export type SummarizeProgress =
   | { phase: 'chunking'; total: number }
   | { phase: 'mapping'; current: number; total: number }
   | { phase: 'reducing'; round: number }
+  // The final user-facing combine pass (distinct from intermediate 'reducing'
+  // rounds) so the UI knows to switch from showing parts to the final answer.
+  | { phase: 'combining' }
   | { phase: 'done' }
   | { phase: 'error'; message: string };
 
@@ -74,8 +77,17 @@ class TranscriptSummarizerService {
    * Summarize text of any size. Returns the final summary. Throws if generation
    * fails outright (the caller shows the error state).
    */
-  async summarize(text: string, opts?: { onProgress?: (p: SummarizeProgress) => void }): Promise<string> {
+  async summarize(
+    text: string,
+    opts?: {
+      onProgress?: (p: SummarizeProgress) => void;
+      // Streams the final, user-facing summary token by token as it is written.
+      // Not called for the intermediate map/reduce passes, which are internal.
+      onToken?: (delta: string) => void;
+    },
+  ): Promise<string> {
     const onProgress = opts?.onProgress;
+    const onToken = opts?.onToken;
     this._isSummarizing = true;
     try {
       await llmService.clearKVCache(true);
@@ -93,7 +105,7 @@ class TranscriptSummarizerService {
       // Small enough to summarize in one pass.
       if (chunks.length <= 1) {
         this.emit({ phase: 'mapping', current: 1, total: 1 }, onProgress);
-        const summary = await this.summarizeOne(SUMMARIZER_SYSTEM_PROMPT, chunks[0] ?? text, FINAL_SUMMARY_TOKENS);
+        const summary = await this.summarizeOne(SUMMARIZER_SYSTEM_PROMPT, chunks[0] ?? text, { maxTokens: FINAL_SUMMARY_TOKENS, onToken });
         this.emit({ phase: 'done' }, onProgress);
         return summary.trim();
       }
@@ -104,7 +116,9 @@ class TranscriptSummarizerService {
       for (let i = 0; i < chunks.length; i++) {
         this.emit({ phase: 'mapping', current: i + 1, total: chunks.length }, onProgress);
         await llmService.clearKVCache(true);
-        const part = await this.summarizeOne(SUMMARIZER_SYSTEM_PROMPT, chunks[i], CHUNK_SUMMARY_TOKENS);
+        // Stream each part as it is written so the map phase is visible, not a
+        // multi-minute static counter. The final combine restreams the answer.
+        const part = await this.summarizeOne(SUMMARIZER_SYSTEM_PROMPT, chunks[i], { maxTokens: CHUNK_SUMMARY_TOKENS, onToken });
         partials.push(part.trim());
       }
 
@@ -118,15 +132,15 @@ class TranscriptSummarizerService {
         const reduced: string[] = [];
         for (let i = 0; i < reChunks.length; i++) {
           await llmService.clearKVCache(true);
-          reduced.push((await this.summarizeOne(COMBINE_SYSTEM_PROMPT, reChunks[i], CHUNK_SUMMARY_TOKENS)).trim());
+          reduced.push((await this.summarizeOne(COMBINE_SYSTEM_PROMPT, reChunks[i], { maxTokens: CHUNK_SUMMARY_TOKENS })).trim());
         }
         combined = reduced.join('\n\n');
       }
 
-      // Final combine pass into one coherent summary.
-      this.emit({ phase: 'reducing', round: round + 1 }, onProgress);
+      // Final combine pass into one coherent summary. Streamed to the caller.
+      this.emit({ phase: 'combining' }, onProgress);
       await llmService.clearKVCache(true);
-      const finalSummary = await this.summarizeOne(COMBINE_SYSTEM_PROMPT, combined, FINAL_SUMMARY_TOKENS);
+      const finalSummary = await this.summarizeOne(COMBINE_SYSTEM_PROMPT, combined, { maxTokens: FINAL_SUMMARY_TOKENS, onToken });
 
       this.emit({ phase: 'done' }, onProgress);
       return finalSummary.trim();
@@ -139,12 +153,16 @@ class TranscriptSummarizerService {
     }
   }
 
-  private async summarizeOne(systemPrompt: string, input: string, maxTokens: number): Promise<string> {
+  private async summarizeOne(
+    systemPrompt: string,
+    input: string,
+    opts: { maxTokens: number; onToken?: (delta: string) => void },
+  ): Promise<string> {
     const messages: Message[] = [
       { id: 'summarize-instruction', role: 'system', content: systemPrompt, timestamp: 0 },
       { id: 'summarize-input', role: 'user', content: input, timestamp: 0 },
     ];
-    return llmService.generateWithMaxTokens(messages, maxTokens);
+    return llmService.generateWithMaxTokens(messages, opts.maxTokens, opts.onToken);
   }
 }
 

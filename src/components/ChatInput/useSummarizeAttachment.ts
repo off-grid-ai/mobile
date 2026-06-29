@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { MediaAttachment } from '../../types';
-import { transcriptSummarizer, type SummarizeProgress } from '../../services';
+import { transcriptSummarizer } from '../../services';
 import { useChatStore, useAppStore } from '../../stores';
 import logger from '../../utils/logger';
+
+/** Throttle for streaming the summary into the message (~20 paints/sec). */
+const STREAM_FLUSH_MS = 50;
 
 /** mm:ss for a millisecond offset, used to label an attached transcript range. */
 function fmtClock(ms: number): string {
@@ -10,20 +13,6 @@ function fmtClock(ms: number): string {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-/** Human-readable line for each summarization phase, streamed into the message. */
-function progressLabel(p: SummarizeProgress): string {
-  switch (p.phase) {
-    case 'chunking':
-      return `Reading the transcript in ${p.total} parts...`;
-    case 'mapping':
-      return `Summarizing part ${p.current} of ${p.total}...`;
-    case 'reducing':
-      return `Combining the parts (pass ${p.round})...`;
-    default:
-      return 'Working...';
-  }
 }
 
 /**
@@ -60,16 +49,65 @@ export function useSummarizeAttachment() {
     const placeholder = chat.addMessage(conversationId, { role: 'assistant', content: 'Starting...' });
 
     setSummarizingId(attachment.id);
+    // Stream the work in place. The map phase streams each part as it is written
+    // (so a multi-chunk run shows text from part 1, not a static counter for
+    // minutes), then the final combine pass restreams the answer over the top.
+    // updateMessageContent rebuilds the conversations tree on every call, so we
+    // flush on a ~50ms timer (matching the main generation loop) rather than per
+    // token, otherwise the JS thread saturates and the UI only paints at the end.
+    let uiPhase: 'map' | 'final' = 'map';
+    let total = 0;
+    let current = 0;
+    const doneParts: string[] = [];
+    let curPart = '';
+    let finalText = '';
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const compose = (): string => {
+      if (uiPhase === 'final') return finalText || 'Combining the parts...';
+      const parts = [...doneParts, curPart].filter((s) => s.trim());
+      const header = total > 1 ? `Summarizing part ${current} of ${total}\n\n` : 'Summarizing...\n\n';
+      return parts.length ? header + parts.join('\n\n') : header.trim();
+    };
+    const flush = () => {
+      flushTimer = null;
+      useChatStore.getState().updateMessageContent(conversationId!, placeholder.id, compose());
+    };
+    const scheduleFlush = () => { if (!flushTimer) flushTimer = setTimeout(flush, STREAM_FLUSH_MS); };
+
     try {
       const summary = await transcriptSummarizer.summarize(text, {
         onProgress: (p) => {
-          if (p.phase !== 'done' && p.phase !== 'error') {
-            useChatStore.getState().updateMessageContent(conversationId!, placeholder.id, progressLabel(p));
+          if (p.phase === 'chunking') {
+            total = p.total;
+          } else if (p.phase === 'mapping') {
+            if (p.total <= 1) {
+              uiPhase = 'final'; // single pass: the streamed text is the answer
+            } else {
+              if (curPart.trim()) doneParts.push(curPart.trim());
+              curPart = '';
+              total = p.total;
+              current = p.current;
+            }
+          } else if (p.phase === 'combining') {
+            if (curPart.trim()) doneParts.push(curPart.trim());
+            curPart = '';
+            uiPhase = 'final';
+            finalText = '';
           }
+          scheduleFlush();
+        },
+        onToken: (delta) => {
+          if (uiPhase === 'final') finalText += delta;
+          else curPart += delta;
+          scheduleFlush();
         },
       });
+      if (flushTimer) clearTimeout(flushTimer);
+      // Final trimmed summary (streamed text may have leading/trailing space).
       useChatStore.getState().updateMessageContent(conversationId, placeholder.id, summary);
     } catch (e) {
+      if (flushTimer) clearTimeout(flushTimer);
       const msg = e instanceof Error ? e.message : 'Summarization failed';
       useChatStore.getState().updateMessageContent(
         conversationId,
