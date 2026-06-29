@@ -66,8 +66,29 @@ class HardwareService {
    * total − used if /proc is unreadable or on iOS.
    */
   private async computeAvailableBytes(totalMemory: number, usedMemory: number): Promise<number> {
+    // PREFER the real per-process headroom from DeviceMemoryModule — the only
+    // number that means "the OS will actually give this process this much before
+    // jetsam" (iOS os_proc_available_memory, which reflects the increased-memory
+    // entitlement; Android ActivityManager.availMem). One uniform contract across
+    // platforms. Fall back to Android /proc, then total−used (a known over-report,
+    // last resort) so the budget degrades gracefully if the module is absent.
+    const proc = await this.readProcessAvailableBytes();
+    if (proc != null) return proc;
     const sys = await this.readSystemAvailableBytes();
     return sys != null ? sys : totalMemory - usedMemory;
+  }
+  /** Real per-process available memory (bytes) via the native module — same on
+   *  iOS and Android. null when the module is unavailable. */
+  private async readProcessAvailableBytes(): Promise<number | null> {
+    const mod = NativeModules.DeviceMemoryModule;
+    if (!mod?.getMemoryInfo) return null;
+    try {
+      const info = await mod.getMemoryInfo();
+      const bytes = Number(info?.processAvailableBytes);
+      return Number.isFinite(bytes) && bytes > 0 ? bytes : null;
+    } catch {
+      return null;
+    }
   }
   private async readSystemAvailableBytes(): Promise<number | null> {
     if (Platform.OS !== 'android') return null;
