@@ -29,13 +29,21 @@ async function loadItems(): Promise<DownloadItem[]> {
   }
 
   try {
-    const pending = callHook<Promise<Array<{ engineId: string; name: string; sizeBytes: number }>>>(HOOKS.downloadsListVoiceModels);
+    const pending = callHook<Promise<Array<{ engineId: string; name: string; sizeBytes: number; progress: number }>>>(HOOKS.downloadsListVoiceModels);
     const voice = pending ? await pending : [];
     for (const v of voice ?? []) {
-      items.push({
+      const progress = v.progress ?? 1;
+      // Kokoro downloads through executorch's own fetcher (not the app download
+      // service), so report it here as ACTIVE while in-progress — that's how it
+      // shows in the Download Manager — or COMPLETED once on disk.
+      items.push(progress >= 1 ? {
         type: 'completed', modelType: 'tts', modelId: v.engineId, fileName: v.name,
         author: 'Voice', quantization: '', fileSize: v.sizeBytes,
         bytesDownloaded: v.sizeBytes, progress: 1, status: 'completed', name: v.name,
+      } : {
+        type: 'active', modelType: 'tts', modelId: v.engineId, fileName: v.name,
+        author: 'Voice', quantization: '', fileSize: v.sizeBytes,
+        bytesDownloaded: Math.round(v.sizeBytes * progress), progress, status: 'downloading', name: v.name,
       });
     }
   } catch {
@@ -77,6 +85,15 @@ export function useVoiceDownloadItems(onAlertClose: () => void): VoiceDownloadIt
   }, []);
 
   useEffect(() => { refreshVoiceItems(); }, [refreshVoiceItems, presentModelIds]);
+
+  // Kokoro's download has no store to subscribe to (it's executorch's own fetcher),
+  // so while a voice model is actively downloading, poll to advance its progress
+  // bar in the Download Manager. Stops as soon as nothing is in-progress.
+  useEffect(() => {
+    if (!voiceItems.some((i) => i.type === 'active')) return;
+    const t = setInterval(() => { refreshVoiceItems(); }, 800);
+    return () => clearInterval(t);
+  }, [voiceItems, refreshVoiceItems]);
 
   const buildDeleteAlert = useCallback((item: DownloadItem): AlertState => {
     const kind = item.modelType === 'tts' ? 'Voice' : 'Transcription';

@@ -49,6 +49,34 @@ describe('useVoiceDownloadItems', () => {
     expect(tts?.fileName).toBe('Kokoro TTS');
   });
 
+  it('shows an in-progress voice download as an ACTIVE item (progress < 1)', async () => {
+    mockCallHook.mockImplementation((name: string) =>
+      name === 'downloads.listVoiceModels'
+        ? Promise.resolve([{ engineId: 'kokoro', name: 'Kokoro TTS', sizeBytes: 80_000_000, progress: 0.5 }])
+        : Promise.resolve(undefined));
+    const { result } = renderHook(() => useVoiceDownloadItems(jest.fn()));
+    await waitFor(() => expect(result.current.voiceItems.some(i => i.modelType === 'tts')).toBe(true));
+
+    const tts = result.current.voiceItems.find(i => i.modelType === 'tts')!;
+    expect(tts.type).toBe('active');
+    expect(tts.status).toBe('downloading');
+    expect(tts.progress).toBe(0.5);
+    expect(tts.bytesDownloaded).toBe(Math.round(80_000_000 * 0.5));
+  });
+
+  it('shows a finished voice download as a COMPLETED item (progress >= 1)', async () => {
+    mockCallHook.mockImplementation((name: string) =>
+      name === 'downloads.listVoiceModels'
+        ? Promise.resolve([{ engineId: 'kokoro', name: 'Kokoro TTS', sizeBytes: 80_000_000, progress: 1 }])
+        : Promise.resolve(undefined));
+    const { result } = renderHook(() => useVoiceDownloadItems(jest.fn()));
+    await waitFor(() => expect(result.current.voiceItems.some(i => i.modelType === 'tts')).toBe(true));
+
+    const tts = result.current.voiceItems.find(i => i.modelType === 'tts')!;
+    expect(tts.type).toBe('completed');
+    expect(tts.status).toBe('completed');
+  });
+
   it('omits voice models when the pro hook is absent', async () => {
     mockCallHook.mockReturnValue(undefined);
     const { result } = renderHook(() => useVoiceDownloadItems(jest.fn()));
