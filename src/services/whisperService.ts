@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- this service spans init + file + realtime transcription; splitting it is tracked as a follow-up refactor */
 import { initWhisper, WhisperContext, RealtimeTranscribeEvent, AudioSessionIos } from 'whisper.rn';
 import * as WhisperRn from 'whisper.rn';
 import { Platform, PermissionsAndroid } from 'react-native';
@@ -502,6 +503,7 @@ class WhisperService {
   isCurrentlyTranscribing(): boolean { return this.isTranscribing; }
 
   // Transcribe a single audio file
+  // eslint-disable-next-line complexity -- chunking branches on platform/model/options; refactor tracked as a follow-up
   async transcribeFile(
     filePath: string,
     options?: {
