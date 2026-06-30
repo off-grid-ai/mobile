@@ -30,7 +30,7 @@ import {
   createVisionModel,
   createMessage,
 } from '../../utils/factories';
-import { Linking } from 'react-native';
+import { Linking, Clipboard } from 'react-native';
 import { OFF_GRID_DESKTOP_URL } from '../../../src/constants';
 
 // Mock requestAnimationFrame
@@ -340,6 +340,17 @@ describe('HomeScreen', () => {
       const { getByTestId } = renderHomeScreen();
       fireEvent.press(getByTestId('desktop-promo-card'));
       expect(spy).toHaveBeenCalledWith(OFF_GRID_DESKTOP_URL);
+      spy.mockRestore();
+    });
+
+    it('tapping copy link copies the URL and shows confirmation (for sharing on mobile)', () => {
+      useAppStore.setState({ desktopPromoDismissed: false });
+      const spy = jest.spyOn(Clipboard, 'setString').mockImplementation(() => {});
+      const { getByTestId, getByText } = renderHomeScreen();
+      expect(getByText('Copy link')).toBeTruthy();
+      fireEvent.press(getByTestId('desktop-promo-copy'));
+      expect(spy).toHaveBeenCalledWith(OFF_GRID_DESKTOP_URL);
+      expect(getByText('Link copied')).toBeTruthy();
       spy.mockRestore();
     });
   });

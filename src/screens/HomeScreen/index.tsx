@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, Clipboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, CustomAlert, hideAlert } from '../../components';
 import { AnimatedEntry } from '../../components/AnimatedEntry';
@@ -99,6 +99,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const voiceSummary = useUiModeStore((s) => s.voiceSummary);
   const desktopPromoDismissed = useAppStore((s) => s.desktopPromoDismissed);
   const setDesktopPromoDismissed = useAppStore((s) => s.setDesktopPromoDismissed);
+  // Copy-link affordance: most people see this on their phone but install on a
+  // Mac, so let them copy the URL and paste it into WhatsApp/Slack for later.
+  const [desktopLinkCopied, setDesktopLinkCopied] = React.useState(false);
+  const copyDesktopLink = React.useCallback(() => {
+    Clipboard.setString(OFF_GRID_DESKTOP_URL);
+    setDesktopLinkCopied(true);
+    setTimeout(() => setDesktopLinkCopied(false), 2000);
+  }, []);
 
   const modelLabels: Record<ModelRowType, string> = {
     text: activeTextModel?.name ?? '—',
@@ -261,9 +269,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
               <Text style={styles.desktopCardBody}>
                 The same on-device AI, now on your Mac. Run text, vision, image, and voice models locally, behind one gateway this phone can connect to - no cloud, no accounts, no API keys.
               </Text>
-              <View style={styles.desktopCardCta}>
-                <Text style={styles.desktopCardCtaText}>Get it for macOS</Text>
-                <Icon name="arrow-up-right" size={14} color={colors.primary} />
+              <View style={styles.desktopCardCtaRow}>
+                <View style={styles.desktopCardCta}>
+                  <Text style={styles.desktopCardCtaText}>Get it for macOS</Text>
+                  <Icon name="arrow-up-right" size={14} color={colors.primary} />
+                </View>
+                <TouchableOpacity
+                  style={styles.desktopCardCopy}
+                  onPress={copyDesktopLink}
+                  hitSlop={10}
+                  testID="desktop-promo-copy"
+                >
+                  <Icon name={desktopLinkCopied ? 'check' : 'copy'} size={14} color={colors.textSecondary} />
+                  <Text style={styles.desktopCardCopyText}>
+                    {desktopLinkCopied ? 'Link copied' : 'Copy link'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </AnimatedPressable>
           )}

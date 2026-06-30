@@ -175,6 +175,11 @@ const createSectionStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     ...TYPOGRAPHY.bodySmall,
     color: colors.textSecondary,
   },
+  desktopCardCtaRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+  },
   desktopCardCta: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -184,6 +189,15 @@ const createSectionStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     ...TYPOGRAPHY.bodySmall,
     fontWeight: '600' as const,
     color: colors.primary,
+  },
+  desktopCardCopy: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+  },
+  desktopCardCopyText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: colors.textSecondary,
   },
   setupCard: {
     alignItems: 'center' as const,
