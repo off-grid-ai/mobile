@@ -6,6 +6,18 @@
 import type { DownloadStatus } from '../../stores/downloadStore';
 import type { ModelDownloadStatus } from './types';
 
+/**
+ * The ONE "is this download in progress?" predicate in the service's vocabulary —
+ * the service-layer twin of the store's isActiveStatus. Any surface that reads the
+ * ModelDownloadService projection (Voice panel, future screens) MUST use this instead
+ * of comparing against a single literal like `=== 'downloading'`, which silently
+ * misses `queued` (accepted, not yet transferring) and `paused` (interrupted /
+ * kill-resumable) — so a queued or interrupted download would render as idle.
+ */
+export function isModelDownloadInProgress(s: ModelDownloadStatus): boolean {
+  return s === 'queued' || s === 'downloading' || s === 'paused';
+}
+
 export function mapStoreStatus(s: DownloadStatus): ModelDownloadStatus {
   switch (s) {
     case 'pending':

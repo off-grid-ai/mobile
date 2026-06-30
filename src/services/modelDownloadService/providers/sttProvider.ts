@@ -14,6 +14,7 @@ import { backgroundDownloadService } from '../../backgroundDownloadService';
 import { useDownloadStore, isActiveStatus } from '../../../stores/downloadStore';
 import logger from '../../../utils/logger';
 import { mapStoreStatus } from '../storeStatus';
+import { uniformDownloadId } from '../uniformId';
 import type { DownloadProvider, ModelDownload } from '../types';
 
 const STT_CAPABILITIES = {
@@ -43,9 +44,9 @@ export const sttProvider: DownloadProvider = {
     // In-flight (downloadStore).
     for (const e of Object.values(useDownloadStore.getState().downloads)) {
       if (e.modelType !== 'stt') continue;
-      const id = bareId(e.modelId);
+      const bare = bareId(e.modelId);
       out.push({
-        id: `stt:${id}`, modelType: 'stt', name: e.fileName || id,
+        id: uniformDownloadId('stt', e.modelId), modelType: 'stt', name: e.fileName || bare,
         sizeBytes: e.totalBytes, bytesDownloaded: e.bytesDownloaded, progress: e.progress,
         status: mapStoreStatus(e.status), capabilities: STT_CAPABILITIES, error: e.errorMessage,
       });
@@ -54,7 +55,7 @@ export const sttProvider: DownloadProvider = {
     const inflight = new Set(out.map(d => d.id));
     const downloaded = await whisperService.listDownloadedModels();
     for (const m of downloaded) {
-      const id = `stt:${m.modelId}`;
+      const id = uniformDownloadId('stt', m.modelId);
       if (inflight.has(id)) continue;
       out.push({
         id, modelType: 'stt', name: m.fileName, sizeBytes: m.sizeBytes,

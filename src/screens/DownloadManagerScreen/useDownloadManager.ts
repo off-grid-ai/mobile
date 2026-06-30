@@ -15,6 +15,7 @@ import logger from '../../utils/logger';
 import { cancelSyntheticImageDownload } from '../ModelsScreen/imageDownloadActions';
 import { parseEntryMetadata, retryImageDownload } from './retryHandlers';
 import { modelDownloadService } from '../../services/modelDownloadService';
+import { uniformDownloadId } from '../../services/modelDownloadService/uniformId';
 import { setImageDownloadOps } from '../../services/modelDownloadService/providers/imageProvider';
 import { useEffect } from 'react';
 
@@ -161,8 +162,14 @@ export function useDownloadManager(): UseDownloadManagerResult {
     });
   }, [removeDownloadEntry]);
 
-  /** Uniform download id the service routes on. */
-  const idOf = (item: DownloadItem): string => `${item.modelType}:${item.modelId}`;
+  /**
+   * Uniform download id the service routes on. MUST go through uniformDownloadId so
+   * it matches the id the owning provider assigned in list() — re-deriving it inline
+   * (`${type}:${modelId}`) leaked the per-type id scheme and broke STT remove/cancel:
+   * the store keys whisper rows `whisper-<id>` but the provider lists them as the bare
+   * `stt:<id>`, so the raw id missed and the service REFUSED it as not-found.
+   */
+  const idOf = (item: DownloadItem): string => uniformDownloadId(item.modelType, item.modelId);
 
   const activeItems: DownloadItem[] = Object.values(downloads)
     .filter(e => e.status !== 'completed' && e.status !== 'cancelled')
@@ -220,7 +227,7 @@ export function useDownloadManager(): UseDownloadManagerResult {
     try {
       // Single owner: provider.remove unloads (n/a for text) + deletes + drops it
       // from the store, and logs [DL-SM].
-      await modelDownloadService.remove(`text:${model.id}`);
+      await modelDownloadService.remove(uniformDownloadId('text', model.id));
     } catch (error) {
       logger.error('[DownloadManager] Failed to delete model:', error);
       setAlertState(showAlert('Error', 'Failed to delete model'));
@@ -232,7 +239,7 @@ export function useDownloadManager(): UseDownloadManagerResult {
     try {
       // Single owner: provider.remove unloads the image model + deletes + drops it
       // from the store, and logs [DL-SM].
-      await modelDownloadService.remove(`image:${model.id}`);
+      await modelDownloadService.remove(uniformDownloadId('image', model.id));
     } catch (error) {
       logger.error('[DownloadManager] Failed to delete image model:', error);
       setAlertState(showAlert('Error', 'Failed to delete image model'));

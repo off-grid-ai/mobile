@@ -135,6 +135,18 @@ describe('VoiceModelsPanel', () => {
     expect(getByText('40%')).toBeTruthy();
   });
 
+  it('shows progress (not the idle CTA) for queued and paused too — the shared in-progress predicate', async () => {
+    // Regression: the panel used a bare `=== 'downloading'`, so a queued or a
+    // kill-interrupted (paused) TTS download flashed the "Download voice" CTA.
+    for (const status of ['queued', 'paused'] as const) {
+      mockDownloads = [ttsDl(status, 0.4)];
+      mockStoreState.isReady = false;
+      const { getByText, queryByText } = await renderPanel();
+      expect(getByText('40%')).toBeTruthy();
+      expect(queryByText('Download voice')).toBeNull();
+    }
+  });
+
   it('backfills the persisted-downloaded flag from disk on focus', async () => {
     let focusCb: (() => void) | undefined;
     (useFocusEffect as jest.Mock).mockImplementation((cb: () => void) => { focusCb = cb; });

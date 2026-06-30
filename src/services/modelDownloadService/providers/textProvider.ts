@@ -17,6 +17,7 @@ import { useAppStore } from '../../../stores';
 import { useDownloadStore, isActiveStatus, DownloadEntry } from '../../../stores/downloadStore';
 import logger from '../../../utils/logger';
 import { mapStoreStatus } from '../storeStatus';
+import { uniformDownloadId } from '../uniformId';
 import type { DownloadProvider, ModelDownload } from '../types';
 
 const TEXT_CAPABILITIES = {
@@ -57,7 +58,7 @@ export const textProvider: DownloadProvider = {
     const out: ModelDownload[] = [];
     for (const e of textEntries()) {
       out.push({
-        id: `text:${e.modelId}`, modelType: 'text', name: e.fileName || e.modelId,
+        id: uniformDownloadId('text', e.modelId), modelType: 'text', name: e.fileName || e.modelId,
         sizeBytes: e.combinedTotalBytes || e.totalBytes,
         bytesDownloaded: e.bytesDownloaded + (e.mmProjBytesDownloaded ?? 0),
         progress: e.progress, status: mapStoreStatus(e.status),
@@ -66,7 +67,7 @@ export const textProvider: DownloadProvider = {
     }
     const inflight = new Set(out.map(d => d.id));
     for (const m of useAppStore.getState().downloadedModels) {
-      const id = `text:${m.id}`;
+      const id = uniformDownloadId('text', m.id);
       if (inflight.has(id)) continue;
       const size = hardwareService.getModelTotalSize(m);
       out.push({

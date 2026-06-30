@@ -23,6 +23,7 @@ import { useAppStore } from '../../../stores';
 import { useDownloadStore, isActiveStatus, DownloadEntry } from '../../../stores/downloadStore';
 import logger from '../../../utils/logger';
 import { mapStoreStatus } from '../storeStatus';
+import { uniformDownloadId } from '../uniformId';
 import type { DownloadProvider, ModelDownload } from '../types';
 
 /**
@@ -62,7 +63,7 @@ export const imageProvider: DownloadProvider = {
       // multi-file (no native row) is never resumable; zip resumes on Android.
       const resumable = !isMultifile(e) && Platform.OS === 'android';
       out.push({
-        id: `image:${id}`, modelType: 'image', name: e.fileName || id,
+        id: uniformDownloadId('image', e.modelId), modelType: 'image', name: e.fileName || id,
         sizeBytes: e.combinedTotalBytes || e.totalBytes, bytesDownloaded: e.bytesDownloaded,
         progress: e.progress, status: mapStoreStatus(e.status),
         capabilities: { cancel: true, retry: true, remove: true, resumable, determinateProgress: true },
@@ -71,7 +72,7 @@ export const imageProvider: DownloadProvider = {
     }
     const inflight = new Set(out.map(d => d.id));
     for (const m of useAppStore.getState().downloadedImageModels) {
-      const id = `image:${m.id}`;
+      const id = uniformDownloadId('image', m.id);
       if (inflight.has(id)) continue;
       out.push({
         id, modelType: 'image', name: m.name, sizeBytes: m.size, bytesDownloaded: m.size,
