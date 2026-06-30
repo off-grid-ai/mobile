@@ -136,4 +136,35 @@ describe('KokoroTTSBridge mount gating', () => {
     expect(resolved).toBe(true);
     expect(engine.getPhase()).toBe('ready');
   });
+
+  // Regression for the SAME bug from a different trigger: the bridge component
+  // re-registers its handle on every executorch-hook re-render (which fires DURING
+  // streaming). _setBridge used to force phase 'ready' unconditionally, resetting an
+  // active playback (processing → ready) → the machine ended it early.
+  it('REGRESSION: a bridge re-register mid-playback does not reset processing → ready', async () => {
+    listDownloadedModels.mockResolvedValue(onDisk());
+    setDownloadedFlag(true);
+    const stream = jest.fn(async ({ onNext, onEnd }: any) => {
+      onNext(new Float32Array(8)); // schedule a buffer; keep it "playing"
+      await onEnd?.();
+    });
+    (useTextToSpeech as jest.Mock).mockReturnValue({ isReady: true, downloadProgress: 1, error: null, stream, streamStop: jest.fn() });
+
+    const engine = new KokoroEngine();
+    const Bridge = engine.getBridgeComponent() as React.FC;
+    render(<Bridge />);
+    await waitFor(() => expect(engine.getPhase()).toBe('ready'));
+
+    await act(async () => {
+      engine.speak('hi'); // → processing; bridge.speak stays pending (buffer not ended)
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(engine.getPhase()).toBe('processing');
+      // Simulate the executorch hook re-rendering → bridge re-registers its handle.
+      const e = engine as any;
+      e._setBridge(e._bridge, e._activeVoiceId);
+      // Must NOT clobber the active playback.
+      expect(engine.getPhase()).toBe('processing');
+    });
+  });
 });
