@@ -97,6 +97,22 @@ describe('KokoroEngine install status', () => {
     expect(engine.getOverallDownloadProgress()).toBeCloseTo(0.04);
   });
 
+  it('REGRESSION: a live download reports downloading even when ALL files are already on disk', async () => {
+    // executorch lists a destination basename before its bytes finish (and a prior
+    // interrupted attempt leaves files behind), so mid-download the full asset set
+    // can be present on disk. The Download Manager then showed Kokoro completed
+    // (82MB) while the Voice panel correctly showed 3%. A live download (phase
+    // 'downloading' / fractional progress) must win over the disk-presence guess.
+    listDownloadedFiles.mockResolvedValue(allOnDisk()); // every basename present
+    const engine = new KokoroEngine();
+    engine._setDownloadProgress(0.03); // → phase 'downloading', progress 3%
+    expect(engine.getPhase()).toBe('downloading');
+    const [state] = await engine.checkAssetStatus();
+    expect(state.status).toBe('downloading');
+    expect(engine.isFullyDownloaded()).toBe(false);
+    expect(engine.getOverallDownloadProgress()).toBeCloseTo(0.03);
+  });
+
   it('REGRESSION: stays downloaded after the bridge unmounts (engine switch)', async () => {
     // Model genuinely on disk for the whole test (a successful disk scan is the
     // authoritative signal).
