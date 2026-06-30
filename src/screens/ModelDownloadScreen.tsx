@@ -15,12 +15,13 @@ import { RemoteServerModal } from '../components/RemoteServerModal';
 import { useTheme, useThemedStyles } from '../theme';
 import { getUserFacingDownloadMessage } from '../utils/downloadErrors';
 import type { ThemeColors, ThemeShadows } from '../theme';
-import { RECOMMENDED_MODELS, TRENDING_FAMILIES, TYPOGRAPHY, SPACING, OFF_GRID_DESKTOP_URL } from '../constants';
+import { RECOMMENDED_MODELS, TYPOGRAPHY, SPACING, OFF_GRID_DESKTOP_URL } from '../constants';
 import { useAppStore } from '../stores';
 import { useDownloadStore, isActiveStatus } from '../stores/downloadStore';
 import { useRemoteServerStore } from '../stores/remoteServerStore';
 import { hardwareService, modelManager, remoteServerManager } from '../services';
 import { startModelDownload } from '../services/startModelDownload';
+import { recommendedModelsForDevice, trendingModelIdsForDevice } from '../utils/recommendedModels';
 import { modelBudgetFraction } from '../services/memoryBudget';
 import { discoverLANServers } from '../services/networkDiscovery';
 import { ModelFile, DownloadedModel, RemoteServer } from '../types';
@@ -134,7 +135,8 @@ export const ModelDownloadScreen: React.FC<Props> = ({ navigation }) => {
         if (cancelled) return;
         setModelRecommendation(rec);
         const ram = hardwareService.getTotalMemoryGB();
-        const compat = RECOMMENDED_MODELS.filter((m) => m.minRam <= ram && (!m.maxRam || ram <= m.maxRam));
+        // Same curated list as the Models screen, filtered to this device's RAM.
+        const compat = recommendedModelsForDevice(ram);
         if (cancelled) return;
         setRecommendedModels(compat);
         const files = await fetchModelFiles(compat);
@@ -280,22 +282,8 @@ export const ModelDownloadScreen: React.FC<Props> = ({ navigation }) => {
     proceed();
   };
 
-  // One best-fit trending model per family (ideal ≈ 40% of RAM, penalise > 75%)
-  const trendingModelIds = React.useMemo(() => {
-    const score = (m: (typeof RECOMMENDED_MODELS)[number]) => {
-      const ratio = m.minRam / totalRamGB;
-      const penalty = ratio > 0.75 ? (ratio - 0.75) * 4 : 0;
-      return Math.abs(ratio - 0.4) + penalty;
-    };
-    const ids = new Set<string>();
-    for (const familyIds of Object.values(TRENDING_FAMILIES)) {
-      const best = RECOMMENDED_MODELS
-        .filter(m => familyIds.includes(m.id) && m.minRam <= totalRamGB && (!m.maxRam || totalRamGB <= m.maxRam))
-        .sort((a, b) => score(a) - score(b))[0];
-      if (best) ids.add(best.id);
-    }
-    return ids;
-  }, [totalRamGB]);
+  // One best-fit trending model per family — shared with the Models screen's scoring.
+  const trendingModelIds = React.useMemo(() => trendingModelIdsForDevice(totalRamGB), [totalRamGB]);
 
   const liveServers = servers.filter((s) => reachableServerIds.has(s.id));
 

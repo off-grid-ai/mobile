@@ -8,6 +8,7 @@ import { modelBudgetFraction } from '../../services/memoryBudget';
 import { useDownloadStore } from '../../stores/downloadStore';
 import { huggingFaceService, modelManager, hardwareService, activeModelService } from '../../services';
 import { startModelDownload } from '../../services/startModelDownload';
+import { ramFitScore } from '../../utils/recommendedModels';
 import { ModelInfo, ModelFile, DownloadedModel } from '../../types';
 import { FilterDimension, FilterState, ModelTypeFilter, CredibilityFilter, SizeFilter, SortOption } from './types';
 import { initialFilterState, SIZE_OPTIONS, VISION_PIPELINE_TAG, CODE_FALLBACK_QUERY } from './constants';
@@ -23,12 +24,10 @@ function parseParamCount(model: ModelInfo): number | null {
 }
 
 
-// Score how well a model fits a device: ideal is ~40% of RAM, penalty above 75% (too slow)
+// Resolve a model's min RAM (explicit, else ~0.75GB/B params), then score via the
+// shared ramFitScore so onboarding + this screen rank fit identically.
 function bestFitScore(model: ModelInfo, ramGB: number): number {
-  const minRam = model.minRamGB ?? (model.paramCount ?? 0) * 0.75;
-  const ratio = minRam / ramGB;
-  const penalty = ratio > 0.75 ? (ratio - 0.75) * 4 : 0;
-  return Math.abs(ratio - 0.4) + penalty;
+  return ramFitScore(model.minRamGB ?? (model.paramCount ?? 0) * 0.75, ramGB);
 }
 
 function applySort<T extends ModelInfo>(models: T[], sort: SortOption, ramGB = 0): T[] {
