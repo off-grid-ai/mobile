@@ -47,7 +47,7 @@ jobs:
 
             for (const ghNum of issueNumbers) {
               // Search for matching Jira ticket
-              const searchRes = await fetch(`${jiraBase}/rest/api/3/search`, {
+              const searchRes = await fetch(`${jiraBase}/rest/api/3/search/jql`, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Basic ${jiraAuth}`,

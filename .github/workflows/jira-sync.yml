@@ -16,6 +16,7 @@ jobs:
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         with:
           script: |
             const jiraEmail = process.env.JIRA_EMAIL;
@@ -37,7 +38,7 @@ jobs:
 
             // Fetch existing Jira tickets to check for duplicates
             // Search for tickets with "GH #" in summary
-            const searchRes = await fetch(`${jiraBase}/rest/api/3/search`, {
+            const searchRes = await fetch(`${jiraBase}/rest/api/3/search/jql`, {
               method: 'POST',
               headers: {
                 'Authorization': `Basic ${jiraAuth}`,
@@ -64,6 +65,8 @@ jobs:
             // by checking individual issue numbers
             let created = 0;
             let skipped = 0;
+            const createdTickets = []; // { key, ghNumber, title, type }
+            const failures = [];       // { ghNumber, error }
 
             for (const issue of ghIssues) {
               // Skip if already in Jira
@@ -80,10 +83,14 @@ jobs:
                 continue;
               }
 
-              // Determine type from labels
-              const labels = issue.labels.map(l => l.name);
-              const isBug = labels.includes('bug');
-              const issuetype = isBug ? 'Bug' : 'Task';
+              // Determine type from GitHub labels: bug -> Bug, feature/enhancement -> Story,
+              // anything else -> Task. (Unstructured sources like Slack will use the shared
+              // triage service for LLM classification; GitHub issues are reliably labelled.)
+              const labels = issue.labels.map(l => l.name.toLowerCase());
+              const issuetype =
+                labels.includes('bug') ? 'Bug' :
+                (labels.includes('feature') || labels.includes('enhancement')) ? 'Story' :
+                'Task';
 
               // Build description from issue body
               const body = (issue.body || '').substring(0, 500).replace(/["\\\n\r\t]/g, ' ').trim();
@@ -150,10 +157,48 @@ jobs:
                 const data = await createRes.json();
                 console.log(`Created ${data.key} for GH #${issue.number}: ${title}`);
                 created++;
+                createdTickets.push({ key: data.key, ghNumber: issue.number, title, type: issuetype });
               } else {
                 const err = await createRes.text();
                 console.error(`Failed to create ticket for GH #${issue.number}: ${err}`);
+                failures.push({ ghNumber: issue.number, error: err.substring(0, 200) });
               }
             }
 
             console.log(`\nDone. Created: ${created}, Skipped: ${skipped}`);
+
+            // Post a Slack summary — only when something was created or failed
+            // (no-news-is-good-news: stay silent on quiet days). Reuses the same
+            // SLACK_WEBHOOK_URL the app-play-store-tracker posts with.
+            const slackUrl = process.env.SLACK_WEBHOOK_URL;
+            if (slackUrl && (createdTickets.length > 0 || failures.length > 0)) {
+              const repo = `${context.repo.owner}/${context.repo.repo}`;
+              const date = new Date().toISOString().slice(0, 10);
+              const lines = createdTickets.map(t =>
+                `• \`${t.key}\` ← GH #${t.ghNumber} — ${t.title} _(${t.type})_`
+              ).join('\\n');
+
+              const blocks = [
+                { type: 'header', text: { type: 'plain_text', text: `🔄 GitHub → Jira Sync — ${date}` } },
+                { type: 'section', text: { type: 'mrkdwn',
+                  text: `*${repo}*\\nCreated *${created}* ticket(s) · Skipped ${skipped}` } },
+              ];
+              if (createdTickets.length > 0) {
+                blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*New tickets*\\n${lines}` } });
+              }
+              if (failures.length > 0) {
+                const fl = failures.map(f => `• GH #${f.ghNumber}: ${f.error}`).join('\\n');
+                blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*⚠️ Failed (${failures.length})*\\n${fl}` } });
+              }
+
+              const slackRes = await fetch(slackUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blocks }),
+              });
+              console.log(slackRes.ok ? 'Posted summary to Slack' : `Slack post failed: ${await slackRes.text()}`);
+            } else if (!slackUrl) {
+              console.log('SLACK_WEBHOOK_URL not set — skipping Slack summary');
+            } else {
+              console.log('Nothing created/failed — no Slack post (quiet day)');
+            }
