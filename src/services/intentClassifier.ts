@@ -159,17 +159,20 @@ class IntentClassifier {
       : options;
 
     const trimmedMessage = message.trim().toLowerCase();
+    const logMsg = trimmedMessage.slice(0, 60);
 
     // Check cache first
     const cacheKey = trimmedMessage.slice(0, 200); // Limit key size
     const cachedIntent = intentCache.get(cacheKey);
     if (cachedIntent) {
+      logger.log(`[ROUTE-SM] classify CACHE intent=${cachedIntent} msg="${logMsg}"`);
       return cachedIntent;
     }
 
     // Fast pattern matching
     const patternResult = this.classifyByPattern(trimmedMessage);
     if (patternResult !== null) {
+      logger.log(`[ROUTE-SM] classify PATTERN intent=${patternResult} msg="${logMsg}"`);
       this.cacheIntent(cacheKey, patternResult);
       return patternResult;
     }
@@ -178,6 +181,7 @@ class IntentClassifier {
     if (opts.useLLM) {
       try {
         const llmResult = await this.classifyWithLLM(message, opts);
+        logger.log(`[ROUTE-SM] classify LLM intent=${llmResult} msg="${logMsg}"`);
         this.cacheIntent(cacheKey, llmResult);
         return llmResult;
       } catch (error) {
@@ -186,6 +190,7 @@ class IntentClassifier {
     }
 
     // Default to text intent if uncertain
+    logger.log(`[ROUTE-SM] classify DEFAULT→text (uncertain, llm=${opts.useLLM}) msg="${logMsg}"`);
     return 'text';
   }
 
@@ -197,6 +202,7 @@ class IntentClassifier {
     // Check for strong image generation indicators
     for (const pattern of IMAGE_PATTERNS) {
       if (pattern.test(message)) {
+        logger.log(`[ROUTE-SM] classify pattern=IMAGE matched /${pattern.source}/`);
         return 'image';
       }
     }
@@ -204,18 +210,21 @@ class IntentClassifier {
     // Check for strong text/chat indicators
     for (const pattern of TEXT_PATTERNS) {
       if (pattern.test(message)) {
+        logger.log(`[ROUTE-SM] classify pattern=TEXT matched /${pattern.source}/`);
         return 'text';
       }
     }
 
     // Very short messages are likely text queries or simple prompts
     if (message.length < 10) {
+      logger.log('[ROUTE-SM] classify pattern=TEXT (message < 10 chars)');
       return 'text';
     }
 
     // Very long messages with multiple sentences are likely text
     const sentenceCount = (message.match(/[.!?]+/g) || []).length;
     if (sentenceCount >= 2 && message.length > 100) {
+      logger.log('[ROUTE-SM] classify pattern=TEXT (multi-sentence long message)');
       return 'text';
     }
 
