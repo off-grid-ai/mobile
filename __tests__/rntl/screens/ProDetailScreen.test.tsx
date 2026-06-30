@@ -9,6 +9,7 @@ import React from 'react';
 import { Alert, Linking } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { useAppStore } from '../../../src/stores/appStore';
+import { OFF_GRID_DESKTOP_URL } from '../../../src/constants';
 
 const PAY_URL = 'https://offgridmobileai.co/pay';
 const mockActivateProByKey = jest.fn();
@@ -67,7 +68,7 @@ describe('ProDetailScreen', () => {
     const { getByText } = render(<ProDetailScreen />);
     fireEvent.press(getByText('Get Off Grid AI Desktop'));
     expect(linkingSpy).toHaveBeenCalledWith(
-      expect.stringContaining('github.com/off-grid-ai/desktop/releases'),
+      OFF_GRID_DESKTOP_URL,
     );
   });
 
@@ -77,7 +78,7 @@ describe('ProDetailScreen', () => {
     await waitFor(() => expect(getByText('Get Off Grid AI Desktop')).toBeTruthy());
     fireEvent.press(getByText('Get Off Grid AI Desktop'));
     expect(linkingSpy).toHaveBeenCalledWith(
-      expect.stringContaining('github.com/off-grid-ai/desktop/releases'),
+      OFF_GRID_DESKTOP_URL,
     );
   });
 
