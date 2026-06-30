@@ -2595,4 +2595,27 @@ describe('LLMService', () => {
       expect(out[0]).toBe(plain);
     });
   });
+
+  describe('hasVisionInputs (named VISION vs TEXT-ONLY seam)', () => {
+    const withImage = () => {
+      const m: any = createUserMessage('hi');
+      m.attachments = [{ id: 'img', type: 'image', uri: 'file:///x/a.png' }];
+      return m;
+    };
+
+    it('is true when an image attachment is present AND multimodal is initialized', () => {
+      (llmService as any).multimodalInitialized = true;
+      expect((llmService as any).hasVisionInputs([withImage()])).toBe(true);
+    });
+
+    it('is false when no image attachments are present (multimodal initialized)', () => {
+      (llmService as any).multimodalInitialized = true;
+      expect((llmService as any).hasVisionInputs([createUserMessage('no images')])).toBe(false);
+    });
+
+    it('is false when images are present but multimodal is NOT initialized', () => {
+      (llmService as any).multimodalInitialized = false;
+      expect((llmService as any).hasVisionInputs([withImage()])).toBe(false);
+    });
+  });
 });

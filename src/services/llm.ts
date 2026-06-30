@@ -281,7 +281,7 @@ class LLMService {
       const managed = await this.dropMissingImageAttachments(await this.manageContextWindow(messages));
       const hasImages = managed.some(m => m.attachments?.some(a => a.type === 'image'));
       if (hasImages && !this.multimodalInitialized) logger.warn('[LLM] Images attached but multimodal not initialized - falling back to text-only');
-      logger.log('[LLM] Generation mode:', hasImages && this.multimodalInitialized ? 'VISION' : 'TEXT-ONLY');
+      logger.log('[LLM] Generation mode:', this.hasVisionInputs(managed) ? 'VISION' : 'TEXT-ONLY');
       const oaiMessages = this.convertToOAIMessages(managed);
       const { settings } = useAppStore.getState();
       const startTime = Date.now();
@@ -361,6 +361,21 @@ class LLMService {
       out.push(kept.length === attachments.length ? m : { ...m, attachments: kept });
     }
     return out;
+  }
+  /**
+   * Whether this turn should run in VISION mode: at least one message carries an
+   * (already-existence-validated by {@link dropMissingImageAttachments}) image
+   * attachment AND the multimodal projector is initialized. If images are present
+   * but multimodal isn't initialized, we fall back to TEXT-ONLY.
+   *
+   * Note: this intentionally scans the WHOLE managed history, not just the latest
+   * user turn — multi-turn vision legitimately references images sent earlier in the
+   * conversation. TODO: if a future change requires scoping vision to the latest turn
+   * only, revisit here (and the corresponding native context handling).
+   */
+  private hasVisionInputs(messages: Message[]): boolean {
+    if (!this.multimodalInitialized) return false;
+    return messages.some(m => m.attachments?.some(a => a.type === 'image'));
   }
   /** Generate a completion with a hard token cap (used for summarization, not user-facing). */
   async generateWithMaxTokens(messages: Message[], maxTokens: number): Promise<string> {
