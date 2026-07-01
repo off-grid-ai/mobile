@@ -38,6 +38,7 @@ jest.mock('../../../src/services/backgroundDownloadService', () => ({
     isAvailable: jest.fn(() => true),
     startDownload: jest.fn(),
     cancelDownload: jest.fn(() => Promise.resolve()),
+    adoptActive: jest.fn(),
     getActiveDownloads: jest.fn(() => Promise.resolve([])),
     moveCompletedDownload: jest.fn(),
     startProgressPolling: jest.fn(),
