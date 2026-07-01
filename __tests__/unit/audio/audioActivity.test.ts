@@ -16,10 +16,16 @@ describe('deriveAudioActivity', () => {
     expect(a.switchingVoice).toBe(false);
   });
 
-  it('shows tts-stop while playing/paused, and busy', () => {
-    expect(deriveAudioActivity({ ...base, playbackStatus: 'playing' }).action).toBe('tts-stop');
-    expect(deriveAudioActivity({ ...base, playbackStatus: 'paused' }).action).toBe('tts-stop');
-    expect(deriveAudioActivity({ ...base, playbackStatus: 'playing' }).ttsBusy).toBe(true);
+  it('shows tts-stop while actively playing (busy)', () => {
+    const a = deriveAudioActivity({ ...base, playbackStatus: 'playing' });
+    expect(a.action).toBe('tts-stop');
+    expect(a.ttsBusy).toBe(true);
+  });
+
+  it('a PAUSED clip is dormant → mic, not a stop button (the paused-shows-stop bug)', () => {
+    const a = deriveAudioActivity({ ...base, playbackStatus: 'paused' });
+    expect(a.action).toBe('mic');
+    expect(a.ttsBusy).toBe(false);
   });
 
   it('disables the tts stop only while preparing (stop mid-load crashes the stream)', () => {
