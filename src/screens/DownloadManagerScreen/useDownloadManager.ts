@@ -161,8 +161,11 @@ export function useDownloadManager(): UseDownloadManagerResult {
   useEffect(() => {
     const refresh = () => setQueuedItems(backgroundDownloadService.getQueuedItems().map(queuedToActiveItem));
     refresh();
+    // The service owns the queue and notifies on every control op (incl. cancelling a
+    // queued start), so a cancel drops the "Queued" row immediately, not on the poll.
+    const unsubscribe = modelDownloadService.subscribe(refresh);
     const t = setInterval(refresh, 1000);
-    return () => clearInterval(t);
+    return () => { unsubscribe(); clearInterval(t); };
   }, [downloads]);
 
   // Voice (TTS) + transcription (STT) downloaded models, loaded from disk.

@@ -164,6 +164,24 @@ class BackgroundDownloadService {
     }));
   }
 
+  /**
+   * Cancel a start that is still waiting for a concurrency slot. A queued start has NO
+   * native downloadId yet (it never reached DownloadManagerModule.startDownload), so
+   * cancelDownload can't reach it — it lives only here, in startQueue. Remove it and
+   * settle its promise as a user cancellation (the same `.cancelled` convention the
+   * onError path uses) so the awaiting startDownload() caller cleans up quietly instead
+   * of surfacing a "download failed". Returns true if a queued start matched the key.
+   */
+  cancelQueued(key: string): boolean {
+    const idx = this.startQueue.findIndex((q) => q.key === key);
+    if (idx === -1) return false;
+    const [removed] = this.startQueue.splice(idx, 1);
+    const error = new Error('Download cancelled') as Error & { cancelled?: boolean };
+    error.cancelled = true;
+    removed.reject(error);
+    return true;
+  }
+
   async retryDownload(downloadId: string): Promise<void> {
     if (!this.isAvailable() || Platform.OS !== 'android') {
       throw new Error('retryDownload is only available on Android');

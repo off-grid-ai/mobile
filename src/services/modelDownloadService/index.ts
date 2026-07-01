@@ -20,6 +20,8 @@
  * never hit a dead Cancel path. No caller ever branches on the concrete model type.
  */
 import logger from '../../utils/logger';
+import { backgroundDownloadService } from '../backgroundDownloadService';
+import { uniformDownloadId } from './uniformId';
 import {
   DownloadProvider,
   ModelDownload,
@@ -164,6 +166,15 @@ class ModelDownloadService {
     let download = this.lastList.find(d => d.id === id);
     if (!download) { await this.list(); download = this.lastList.find(d => d.id === id); }
     if (!download) {
+      // A start still waiting for a concurrency slot is not in any provider's list —
+      // it lives only in the queue owner (no native downloadId, no store row yet). A
+      // cancel/remove of a "Queued" row must reach it there, or it stays stuck until a
+      // slot frees. (retry is meaningless for a not-yet-started item.)
+      if ((op === 'cancel' || op === 'remove') && this.cancelQueuedStart(id)) {
+        logger.log(`[DL-SM] ${op} ${id} → cancelled queued start`);
+        this.notify();
+        return;
+      }
       logger.log(`[DL-SM] ${op} ${id} REFUSED: not found`);
       return;
     }
@@ -184,6 +195,20 @@ class ModelDownloadService {
       throw err;
     }
     this.notify();
+  }
+
+  /**
+   * Match a uniform id against the queue owner's waiting starts and cancel the one that
+   * shares it. The queue is keyed by the platform-level modelKey (which knows nothing
+   * about the uniform-id scheme), so the mapping is owned HERE — the same uniformDownloadId
+   * the providers' list() and the View's dispatch use, so queued and started rows route
+   * identically. Returns true if a queued start was cancelled.
+   */
+  private cancelQueuedStart(id: string): boolean {
+    const queued = backgroundDownloadService
+      .getQueuedItems()
+      .find(q => uniformDownloadId(q.modelType as ModelDownloadType, q.modelId) === id);
+    return queued ? backgroundDownloadService.cancelQueued(queued.modelKey) : false;
   }
 
   subscribe(listener: Listener): () => void {

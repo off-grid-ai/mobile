@@ -57,7 +57,7 @@ jest.mock('../../../../src/services', () => ({
   get backgroundDownloadService() { return mockBackgroundDownloadService; },
 }));
 jest.mock('../../../../src/services/modelDownloadService', () => ({
-  get modelDownloadService() { return { retry: (id: string) => mockMDS.retry(id), cancel: (id: string) => mockMDS.cancel(id), remove: (id: string) => mockMDS.remove(id) }; },
+  get modelDownloadService() { return { retry: (id: string) => mockMDS.retry(id), cancel: (id: string) => mockMDS.cancel(id), remove: (id: string) => mockMDS.remove(id), subscribe: () => () => {} }; },
 }));
 jest.mock('../../../../src/services/modelDownloadService/providers/imageProvider', () => ({
   setImageDownloadOps: (...a: any[]) => mockSetImageDownloadOps(...a),

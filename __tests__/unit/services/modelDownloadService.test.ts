@@ -5,7 +5,21 @@
  */
 import logger from '../../../src/utils/logger';
 import { modelDownloadService } from '../../../src/services/modelDownloadService';
+import { backgroundDownloadService } from '../../../src/services/backgroundDownloadService';
 import type { DownloadProvider, ModelDownload, ModelDownloadType } from '../../../src/services/modelDownloadService/types';
+
+// The queue of not-yet-started downloads is owned by backgroundDownloadService; the
+// service maps a uniform id onto it to cancel a "Queued" row that no provider lists.
+jest.mock('../../../src/services/backgroundDownloadService', () => ({
+  backgroundDownloadService: {
+    getQueuedItems: jest.fn(() => []),
+    cancelQueued: jest.fn(() => false),
+  },
+}));
+const mockBg = backgroundDownloadService as unknown as {
+  getQueuedItems: jest.Mock;
+  cancelQueued: jest.Mock;
+};
 
 jest.spyOn(logger, 'log').mockImplementation(() => {});
 
@@ -36,6 +50,8 @@ const dl = (id: string, modelType: ModelDownloadType, over: Partial<ModelDownloa
 beforeEach(() => {
   modelDownloadService._reset();
   (logger.log as jest.Mock).mockClear();
+  mockBg.getQueuedItems.mockReset().mockReturnValue([]);
+  mockBg.cancelQueued.mockReset().mockReturnValue(false);
 });
 
 describe('ModelDownloadService', () => {
@@ -101,6 +117,31 @@ describe('ModelDownloadService', () => {
 
   it('refuses (no throw) when no provider owns the id', async () => {
     await expect(modelDownloadService.retry('image:zzz')).resolves.toBeUndefined();
+  });
+
+  it('cancels a queued (not-yet-started) download that no provider lists, matched by uniform id', async () => {
+    // 'text:m/a' isn't in any provider list (it's still waiting for a slot), so it
+    // lives only in the queue owner keyed by its platform modelKey.
+    mockBg.getQueuedItems.mockReturnValue([
+      { modelKey: 'm/a::a.gguf', modelId: 'm/a', fileName: 'a.gguf', modelType: 'text', totalBytes: 100 },
+    ]);
+    mockBg.cancelQueued.mockReturnValue(true);
+    modelDownloadService.register(makeProvider('text', [dl('text:other', 'text')]));
+
+    await modelDownloadService.cancel('text:m/a');
+
+    // Routed to the queue owner by the SAME uniform id, using the queued item's modelKey.
+    expect(mockBg.cancelQueued).toHaveBeenCalledWith('m/a::a.gguf');
+    const lines = (logger.log as jest.Mock).mock.calls.map(c => c[0]);
+    expect(lines.some((l: string) => l.includes('cancel text:m/a → cancelled queued start'))).toBe(true);
+  });
+
+  it('does NOT route retry to the queue (a not-yet-started item cannot be retried)', async () => {
+    mockBg.getQueuedItems.mockReturnValue([
+      { modelKey: 'm/a::a.gguf', modelId: 'm/a', fileName: 'a.gguf', modelType: 'text', totalBytes: 100 },
+    ]);
+    await modelDownloadService.retry('text:m/a');
+    expect(mockBg.cancelQueued).not.toHaveBeenCalled();
   });
 
   it('reconcile() lets a provider strand an un-resumable in-flight download as error (app-kill), logged', async () => {

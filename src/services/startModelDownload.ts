@@ -56,6 +56,9 @@ export async function startModelDownload(
       opts.onRegistered?.(model);
     }, fail);
   } catch (e) {
+    // A start cancelled while still queued (no slot yet) rejects with `.cancelled` —
+    // there is no store row to fail and it is not an error, so clean up quietly.
+    if ((e as Error & { cancelled?: boolean })?.cancelled) return;
     fail(e as Error);
   }
 }

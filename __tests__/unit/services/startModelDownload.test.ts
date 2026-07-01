@@ -71,6 +71,17 @@ describe('startModelDownload', () => {
     expect(mockStore.setStatus).not.toHaveBeenCalled();
   });
 
+  it('swallows a cancellation of a still-queued start (no onError, no setStatus)', async () => {
+    // Cancelling a "Queued" row rejects the awaited start with `.cancelled` — there is
+    // no store row to fail and it is not an error, so it must NOT surface onError.
+    const cancelled = Object.assign(new Error('Download cancelled'), { cancelled: true });
+    mockDownloadModelBackground.mockRejectedValue(cancelled);
+    const onError = jest.fn();
+    await startModelDownload(MODEL_ID, FILE, { onError });
+    expect(onError).not.toHaveBeenCalled();
+    expect(mockStore.setStatus).not.toHaveBeenCalled();
+  });
+
   it('marks the entry failed + calls onError when watchDownload reports an error', async () => {
     mockDownloadModelBackground.mockResolvedValue({ downloadId: 'dl-1' });
     let onErr: ((e: Error) => void) | undefined;

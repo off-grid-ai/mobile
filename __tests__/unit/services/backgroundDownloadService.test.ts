@@ -1334,6 +1334,31 @@ describe('BackgroundDownloadService', () => {
       expect(service.getQueuedCount()).toBe(0);
     });
 
+    it('cancelQueued removes a waiting start, settles it as cancelled, and frees the queue', async () => {
+      const promises = ['a', 'b', 'c', 'd'].map((id) => service.startDownload(params(id)));
+      await flush();
+      // 'd' is queued (a,b,c hold the 3 slots) — it has no native downloadId yet.
+      expect(service.getQueuedCount()).toBe(1);
+      let rejected: (Error & { cancelled?: boolean }) | null = null;
+      const dSettled = promises[3].catch((e: Error & { cancelled?: boolean }) => { rejected = e; });
+
+      const removed = service.cancelQueued('d');
+
+      expect(removed).toBe(true);
+      expect(service.getQueuedCount()).toBe(0);
+      await dSettled;
+      // The awaiting startDownload() settles as a user cancellation, not a failure.
+      expect(rejected).not.toBeNull();
+      expect(rejected!.cancelled).toBe(true);
+      // Cancelling a queued start touches NO native download (it never began).
+      expect(mockDownloadManagerModule.cancelDownload).not.toHaveBeenCalled();
+    });
+
+    it('cancelQueued returns false for a key that is not queued', () => {
+      ['a', 'b', 'c'].forEach((id) => service.startDownload(params(id)));
+      expect(service.cancelQueued('nope')).toBe(false);
+    });
+
     it('adoptActive counts restored downloads against the cap', async () => {
       // Simulate a relaunch that resumed 3 downloads natively.
       service.adoptActive(['r1', 'r2', 'r3']);
