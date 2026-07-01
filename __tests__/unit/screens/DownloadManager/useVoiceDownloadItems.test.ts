@@ -114,7 +114,20 @@ describe('useVoiceDownloadItems', () => {
     const tts = result.current.voiceItems.find(i => i.modelType === 'tts')!;
     expect(tts.type).toBe('active');
     expect(tts.status).toBe('failed');
+    // Engine message present → prefer it verbatim; leave reasonCode undefined so
+    // the label helper shows the engine text, not a canned code message. Retry
+    // still renders because isRetryable(undefined) === true.
     expect(tts.reason).toBe('Download interrupted or missing resource');
+    expect(tts.reasonCode).toBeUndefined();
+  });
+
+  it('falls back to the retryable code when the engine gives no failure message', async () => {
+    mockServiceList = [ttsEntry({ status: 'error', progress: 0, bytesDownloaded: 0 })];
+    const { result } = renderHook(() => useVoiceDownloadItems(jest.fn()));
+    await waitFor(() => expect(result.current.voiceItems.some(i => i.modelType === 'tts')).toBe(true));
+
+    const tts = result.current.voiceItems.find(i => i.modelType === 'tts')!;
+    expect(tts.status).toBe('failed');
     expect(tts.reasonCode).toBe('download_interrupted');
   });
 

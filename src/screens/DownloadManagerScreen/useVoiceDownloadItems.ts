@@ -55,14 +55,19 @@ async function loadItems(): Promise<DownloadItem[]> {
       } else if (d.status === 'error') {
         // A failed Kokoro fetch. Surface it as a failed active item so the
         // Download Manager shows it with a Retry button (executorch resumes from
-        // its cache). 'download_interrupted' is a retryable reason code; the
-        // Retry action routes back through modelDownloadService.retry() →
-        // ttsProvider.retry() → the engine's downloadAssets().
+        // its cache); the Retry action routes back through
+        // modelDownloadService.retry() → ttsProvider.retry() → downloadAssets().
+        // Prefer the engine's own message: when d.error is present, leave
+        // reasonCode undefined so getDownloadStatusLabel shows that text rather
+        // than the canned message a known code maps to. Retry still renders
+        // because isRetryable(undefined) === true. Fall back to the retryable
+        // 'download_interrupted' code only when the engine gave no message.
         items.push({
           type: 'active', modelType: 'tts', modelId: engineId, fileName: d.name,
           author: 'Voice', quantization: '', fileSize: d.sizeBytes,
           bytesDownloaded: d.bytesDownloaded, progress: d.progress, status: 'failed', name: d.name,
-          reason: d.error, reasonCode: 'download_interrupted',
+          reason: d.error,
+          ...(d.error ? {} : { reasonCode: 'download_interrupted' as const }),
         });
       }
     }
@@ -113,9 +118,11 @@ export function useVoiceDownloadItems(onAlertClose: () => void): VoiceDownloadIt
 
   // Kokoro's download has no store to subscribe to (it's executorch's own fetcher),
   // so while a voice model is actively downloading, poll to advance its progress
-  // bar in the Download Manager. Stops as soon as nothing is in-progress.
+  // bar in the Download Manager. Gate on the in-progress status specifically — a
+  // failed item is also type:'active' (so ActiveDownloadCard renders its Retry),
+  // but it's terminal and must NOT keep an 800ms interval alive.
   useEffect(() => {
-    if (!voiceItems.some((i) => i.type === 'active')) return;
+    if (!voiceItems.some((i) => i.type === 'active' && i.status === 'downloading')) return;
     const t = setInterval(() => { refreshVoiceItems(); }, 800);
     return () => clearInterval(t);
   }, [voiceItems, refreshVoiceItems]);
