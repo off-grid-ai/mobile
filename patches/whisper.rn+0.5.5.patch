@@ -79,6 +79,26 @@ index b1fa548..5f0b7f1 100644
      if (job->audio_output_path != nullptr) {
          RNWHISPER_LOG_INFO("job->params.language: %s\n", job->params.language);
          std::vector<int> slice_n_samples_vec;
+diff --git a/node_modules/whisper.rn/ios/RNWhisper.mm b/node_modules/whisper.rn/ios/RNWhisper.mm
+index 27908d4..3292b68 100644
+--- a/node_modules/whisper.rn/ios/RNWhisper.mm
++++ b/node_modules/whisper.rn/ios/RNWhisper.mm
+@@ -505,6 +505,7 @@ - (void)transcribeData:(RNWhisperContext *)context
+     float *data = [RNWhisperAudioUtils decodeWaveData:pcmData count:&count cutHeader:NO];
+ 
+     NSArray *segments = [vadContext detectSpeech:data samplesCount:count options:options];
++    if (data != nil) free(data); // decodeWaveFile/Data malloc this PCM buffer; detectSpeech consumes it synchronously. Without this it leaks ~one slice of float PCM per call and OOMs over a long file.
+     resolve(segments);
+ }
+ 
+@@ -541,6 +542,7 @@ - (void)transcribeData:(RNWhisperContext *)context
+     }
+ 
+     NSArray *segments = [vadContext detectSpeech:data samplesCount:count options:options];
++    if (data != nil) free(data); // decodeWaveFile/Data malloc this PCM buffer; detectSpeech consumes it synchronously. Without this it leaks ~one slice of float PCM per call and OOMs over a long file.
+     resolve(segments);
+ }
+ 
 diff --git a/node_modules/whisper.rn/ios/RNWhisperContext.mm b/node_modules/whisper.rn/ios/RNWhisperContext.mm
 index 13a880f..4ccf878 100644
 --- a/node_modules/whisper.rn/ios/RNWhisperContext.mm
