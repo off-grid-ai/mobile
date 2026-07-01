@@ -90,6 +90,31 @@ class HardwareService {
       return null;
     }
   }
+  /**
+   * The full per-process memory picture (MB) for diagnostics: what iOS will still let
+   * this process allocate (available), its current footprint, and the derived process
+   * LIMIT (available + footprint) — the number that explains a "not enough memory"
+   * refusal on a high-RAM device (it's the OS cap on the app, not the physical RAM).
+   * null when the native module is unavailable.
+   */
+  async getProcessMemory(): Promise<{ availableMB: number; footprintMB: number; limitMB: number } | null> {
+    const mod = NativeModules.DeviceMemoryModule;
+    if (!mod?.getMemoryInfo) return null;
+    try {
+      const info = await mod.getMemoryInfo();
+      const availB = Number(info?.processAvailableBytes) || 0;
+      const footB = Number(info?.footprintBytes) || 0;
+      const MB = 1024 * 1024;
+      return {
+        availableMB: Math.round(availB / MB),
+        footprintMB: Math.round(footB / MB),
+        limitMB: Math.round((availB + footB) / MB),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   private async readSystemAvailableBytes(): Promise<number | null> {
     if (Platform.OS !== 'android') return null;
     try {
