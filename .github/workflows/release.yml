@@ -3,7 +3,9 @@ name: Build and Release Android
 # If you rename this workflow, update the workflow_run trigger in release-ios.yml.
 
 on:
-  workflow_dispatch:  # Disabled - manual trigger only for now
+  push:
+    branches: [main]     # every merge to main cuts a release
+  workflow_dispatch: {}   # manual fallback
 
 permissions:
   contents: write
@@ -11,6 +13,12 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Lift store secrets to job-level env so the `if:` guards on the Play steps can test
+    # for their presence (if: conditions can read env, not secrets directly). Absent
+    # secrets => empty => Play upload steps skip, GitHub Release path still runs.
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
 
     steps:
       - name: Checkout code
@@ -33,6 +41,12 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Setup Ruby (fastlane)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -110,3 +124,25 @@ jobs:
           name: OffgridMobile-v${{ env.NEW_VERSION }}
           path: android/app/build/outputs/apk/standard/release/OffgridMobile-v${{ env.NEW_VERSION }}.apk
           if-no-files-found: error
+
+      # ── Play Store upload (in addition to the GitHub Release above) ──────────
+      # Decodes the production keystore + Play service-account key from secrets, builds
+      # a signed AAB, and uploads to the Play production track as a DRAFT (a human
+      # confirms rollout in the Play Console). Skipped automatically if the secrets are
+      # absent, so the GitHub Release path still works without them.
+      - name: Decode signing secrets
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && env.PLAY_STORE_JSON_KEY != '' }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          echo "$PLAY_STORE_JSON_KEY" | base64 --decode > "$RUNNER_TEMP/play-key.json"
+          echo "PLAY_UPLOAD=1" >> $GITHUB_ENV
+
+      - name: Build signed AAB + upload to Play (draft)
+        if: ${{ env.PLAY_UPLOAD == '1' }}
+        env:
+          PLAY_STORE_JSON_KEY_PATH: ${{ runner.temp }}/play-key.json
+          OFFGRID_UPLOAD_STORE_FILE: ${{ runner.temp }}/release.keystore
+          OFFGRID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          OFFGRID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          OFFGRID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bundle exec fastlane android release
