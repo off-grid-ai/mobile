@@ -1,7 +1,42 @@
+/* eslint-disable max-lines -- 655 lines. transcribeFile complexity is genuinely
+   fixed (buildTranscribeOpts) and the model catalogue is split into whisperModels.ts;
+   getting under 500 needs moving download/model-management into its own module,
+   which touches ~11 call sites across core + pro. Deferred as a dedicated task -
+   see docs/plans/ci-lint-test-progress.md section 4. */
 import { initWhisper, WhisperContext, RealtimeTranscribeEvent, AudioSessionIos } from 'whisper.rn';
+import * as WhisperRn from 'whisper.rn';
 import { Platform, PermissionsAndroid } from 'react-native';
 import RNFS from 'react-native-fs';
 import logger from '../utils/logger';
+import { WHISPER_MODELS } from './whisperModels';
+
+// Re-exported so existing consumers keep importing it from whisperService.
+export { WHISPER_MODELS };
+
+// Pipe whisper.cpp's native logs (system_info with the real n_threads, model
+// load info, encode/decode timings) into our logger so they show in both the
+// JS debug-log screen and logcat. Wired once, lazily. Accessed via a cast
+// because the local whisper.rn type shim doesn't declare these (they exist at
+// runtime in whisper.rn >= 0.5).
+let nativeWhisperLogWired = false;
+function wireNativeWhisperLog(): void {
+  if (nativeWhisperLogWired) return;
+  nativeWhisperLogWired = true;
+  const w = WhisperRn as unknown as {
+    toggleNativeLog?: (enabled: boolean) => void;
+    addNativeLogListener?: (l: (level: string, text: string) => void) => void;
+  };
+  try {
+    w.toggleNativeLog?.(true);
+    w.addNativeLogListener?.((level: string, text: string) => {
+      const msg = text.trim();
+      if (msg) logger.log(`[whisper.cpp:${level}] ${msg}`);
+    });
+    logger.log('[Whisper] native logging enabled');
+  } catch (e) {
+    logger.warn(`[Whisper] could not enable native logging: ${String(e)}`);
+  }
+}
 import { backgroundDownloadService } from './backgroundDownloadService';
 import { useDownloadStore } from '../stores/downloadStore';
 import { makeModelKey } from '../utils/modelKey';
@@ -14,22 +49,27 @@ export interface TranscriptionResult {
 }
 export type TranscriptionCallback = (result: TranscriptionResult) => void;
 
-const GGML_BASE = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main';
-
-export const WHISPER_MODELS = [
-  // ── English-only ──────────────────────────────────────────────────────────
-  { id: 'tiny.en',   name: 'Tiny',   size: 75,   lang: 'en',    url: `${GGML_BASE}/ggml-tiny.en.bin`,   description: 'Fastest, English only' },
-  { id: 'base.en',   name: 'Base',   size: 142,  lang: 'en',    url: `${GGML_BASE}/ggml-base.en.bin`,   description: 'Better accuracy, English only' },
-  { id: 'small.en',  name: 'Small',  size: 466,  lang: 'en',    url: `${GGML_BASE}/ggml-small.en.bin`,  description: 'High accuracy, English only' },
-  { id: 'medium.en', name: 'Medium', size: 1500, lang: 'en',    url: `${GGML_BASE}/ggml-medium.en.bin`, description: 'Near human-level, English only, ~2 GB RAM' },
-  // ── Multilingual ──────────────────────────────────────────────────────────
-  { id: 'tiny',           name: 'Tiny',             size: 75,   lang: 'multi', url: `${GGML_BASE}/ggml-tiny.bin`,           description: 'Fastest, 99 languages' },
-  { id: 'base',           name: 'Base',             size: 142,  lang: 'multi', url: `${GGML_BASE}/ggml-base.bin`,           description: 'Better accuracy, 99 languages' },
-  { id: 'small',          name: 'Small',            size: 466,  lang: 'multi', url: `${GGML_BASE}/ggml-small.bin`,          description: 'High accuracy, 99 languages' },
-  { id: 'medium',         name: 'Medium',           size: 1500, lang: 'multi', url: `${GGML_BASE}/ggml-medium.bin`,         description: 'Near human-level, 99 languages, ~2 GB RAM' },
-  { id: 'large-v3-turbo', name: 'Large v3 Turbo',  size: 809,  lang: 'multi', url: `${GGML_BASE}/ggml-large-v3-turbo.bin`, description: 'Fast + accurate, distilled large, 99 languages' },
-  { id: 'large-v3',       name: 'Large v3',         size: 1550, lang: 'multi', url: `${GGML_BASE}/ggml-large-v3.bin`,       description: 'Best quality, 99 languages, ~3 GB RAM' },
-];
+/** Options for {@link WhisperService.transcribeFile}. */
+interface TranscribeFileOptions {
+  language?: string;
+  onProgress?: (progress: number) => void;
+  // Fires every time Whisper finishes decoding a chunk (~30s of audio). `text`
+  // is the cumulative transcript so far, ready to drop straight into the UI.
+  onPartial?: (text: string) => void;
+  maxThreads?: number;
+  nProcessors?: number;
+  // Transcribe only a window of the file (ms). Used for chunked / resumable
+  // transcription of long recordings.
+  offset?: number;
+  duration?: number;
+  // Receives the final segments with whisper.cpp timestamps. t0/t1 are in
+  // centiseconds (10ms units) relative to the processed window.
+  onSegments?: (segments: { text: string; t0: number; t1: number }[]) => void;
+  // Enable tinydiarize (tdrz): whisper marks speaker-turn boundaries with a
+  // [SPEAKER_TURN] token. Requires a tdrz model (ggml-small.en-tdrz.bin);
+  // other models silently ignore it. English only.
+  diarize?: boolean;
+}
 
 class WhisperService {
   private context: WhisperContext | null = null;
@@ -40,6 +80,7 @@ class WhisperService {
   private contextReleasePromise: Promise<void> = Promise.resolve();
   private transcriptionFullyStopped: Promise<void> = Promise.resolve();
   private activeDownloadId: string | null = null;
+  private fileTranscribeStop: (() => void | Promise<void>) | null = null;
 
   getModelsDir(): string { return `${RNFS.DocumentDirectoryPath}/whisper-models`; }
   async ensureModelsDirExists(): Promise<void> {
@@ -224,7 +265,11 @@ class WhisperService {
     logger.log(`[Whisper] Model file validated: ${modelPath} (${Math.round(fileSize / (1024 * 1024))} MB)`);
   }
 
-  async loadModel(modelPath: string): Promise<void> {
+  async loadModel(
+    modelPath: string,
+    options?: { useGpu?: boolean; useFlashAttn?: boolean; useCoreML?: boolean },
+  ): Promise<void> {
+    wireNativeWhisperLog();
     if (this.context && this.currentModelPath !== modelPath) await this.unloadModel();
     if (this.context && this.currentModelPath === modelPath) return;
     if (this.isReleasingContext) {
@@ -236,9 +281,34 @@ class WhisperService {
     // Native initWithModelPath calls abort() on invalid files, crashing the app.
     await this.validateModelFile(modelPath);
 
-    logger.log(`[Whisper] Loading model: ${modelPath}`);
+    // CoreML only helps when the per-model encoder bundle (ggml-<model>-encoder.mlmodelc)
+    // is present. Enabling it WITHOUT that asset makes whisper.rn fail to load CoreML,
+    // fall back to CPU, AND then crash at transcribe (0%) on some iOS devices (e.g. the
+    // A12 / iPhone XS). The encoder assets are not wired yet, so this guard keeps CoreML
+    // off until they are - the toggle becomes a no-op rather than a crash.
+    let useCoreML = options?.useCoreML ?? false;
+    if (useCoreML) {
+      const coreMLPath = modelPath.replace(/\.bin$/i, '-encoder.mlmodelc');
+      if (!(await RNFS.exists(coreMLPath))) {
+        logger.warn('[Whisper] CoreML requested but encoder asset missing; using CPU instead');
+        useCoreML = false;
+      }
+    }
+
+    logger.log(
+      `[Whisper] Loading model: ${modelPath} useGpu=${options?.useGpu ?? false} ` +
+        `useFlashAttn=${options?.useFlashAttn ?? false} useCoreML=${useCoreML}`,
+    );
     try {
-      this.context = await initWhisper({ filePath: modelPath });
+      // useGpu/useFlashAttn/useCoreMLIos are real whisper.rn runtime options but
+      // absent from this version's WhisperContextOptions type, so pass via a cast.
+      const initOpts: Record<string, unknown> = {
+        filePath: modelPath,
+        useGpu: options?.useGpu ?? false,
+        useFlashAttn: options?.useFlashAttn ?? false,
+        useCoreMLIos: useCoreML,
+      };
+      this.context = await initWhisper(initOpts as unknown as Parameters<typeof initWhisper>[0]);
       this.currentModelPath = modelPath;
       logger.log('[Whisper] Model loaded successfully');
     } catch (error) {
@@ -441,24 +511,149 @@ class WhisperService {
   isCurrentlyTranscribing(): boolean { return this.isTranscribing; }
 
   // Transcribe a single audio file
+  /** Build the whisper.rn transcribe options from our TranscribeFileOptions.
+   * Extracted from transcribeFile to keep that method under the complexity limit. */
+  private buildTranscribeOpts(
+    options: TranscribeFileOptions | undefined,
+    ctx: { language: string; maxThreads: number; nProcessors: number; tStart: number },
+  ): Record<string, unknown> {
+    const { language, maxThreads, nProcessors, tStart } = ctx;
+    let lastProgressLog = 0;
+    // 'auto' means "let Whisper sniff the first ~30s of audio and pick". whisper.rn
+    // does this when the language field is omitted; passing 'auto' would be a literal code.
+    const transcribeOpts: Record<string, unknown> = {
+      onProgress: (progress: number) => {
+        if (progress - lastProgressLog >= 10 || progress >= 100) {
+          lastProgressLog = progress;
+          logger.log(
+            `[Whisper] transcribe progress ${progress.toFixed(0)}% ` +
+              `elapsed=${((Date.now() - tStart) / 1000).toFixed(1)}s`,
+          );
+        }
+        options?.onProgress?.(progress);
+      },
+    };
+    if (language !== 'auto') transcribeOpts.language = language;
+    if (maxThreads > 0) transcribeOpts.maxThreads = maxThreads;
+    if (nProcessors > 1) transcribeOpts.nProcessors = nProcessors;
+    if (options?.offset && options.offset > 0) transcribeOpts.offset = Math.floor(options.offset);
+    if (options?.duration && options.duration > 0) transcribeOpts.duration = Math.floor(options.duration);
+    // Speaker-turn marking; whisper.cpp only honors this with a tdrz model (else a no-op).
+    if (options?.diarize) transcribeOpts.tdrzEnable = true;
+    // whisper.rn fires onNewSegments after every decoded chunk (cumulative text);
+    // nProcessors > 1 disables it in whisper.cpp, so it only fires when nProcessors == 1.
+    if (options?.onPartial || options?.onSegments) {
+      transcribeOpts.onNewSegments = (eventData: {
+        result: string;
+        segments?: { text: string; t0: number; t1: number }[];
+      }) => {
+        try {
+          options.onPartial?.(eventData.result);
+          if (options.onSegments && Array.isArray(eventData.segments)) {
+            options.onSegments(eventData.segments);
+          }
+        } catch (err) {
+          logger.warn(`[Whisper] onPartial callback threw: ${String(err)}`);
+        }
+      };
+    }
+    return transcribeOpts;
+  }
+
   async transcribeFile(
     filePath: string,
-    options?: {
-      language?: string;
-      onProgress?: (progress: number) => void;
-    }
+    options?: TranscribeFileOptions,
   ): Promise<string> {
+    wireNativeWhisperLog();
     if (!this.context) {
       throw new Error('No Whisper model loaded');
     }
 
-    const { promise } = this.context.transcribe(filePath, {
-      language: options?.language || 'en',
-      onProgress: options?.onProgress,
+    const requestedLanguage = options?.language || 'auto';
+    // English-only models (ggml-*.en) have ONLY English tokens. Asking them for
+    // any other language - via auto-detect (which returns garbage like "tg") OR an
+    // explicit pick like "fr" - makes whisper unstable on iOS: it crashes at 0%,
+    // thrashes (762s for 13%, 0 segments), or garbles. So force English for ANY
+    // English-only model, whatever was requested. Use the catalogue's `lang`
+    // metadata; fall back to the filename convention for custom models. (To
+    // transcribe other languages, a multilingual model like ggml-base.bin is needed.)
+    const modelFile = (this.currentModelPath ?? '').split('/').pop() ?? '';
+    const catalogModel = WHISPER_MODELS.find((m) => m.url.endsWith(modelFile));
+    const isEnglishOnlyModel = catalogModel ? catalogModel.lang === 'en' : /\.en\.bin$/i.test(modelFile);
+    const language = isEnglishOnlyModel ? 'en' : requestedLanguage;
+    const maxThreads = options?.maxThreads ?? 0;
+    const nProcessors = options?.nProcessors ?? 1;
+    const loadedPath = this.currentModelPath ?? '(unknown)';
+    const gpu = (this.context as unknown as { gpu?: boolean }).gpu;
+
+    logger.log(
+      `[Whisper] transcribeFile START path=${filePath} lang=${language} ` +
+        `maxThreads=${maxThreads} nProcessors=${nProcessors} ` +
+        `model=${loadedPath} gpu=${gpu}`,
+    );
+    const tStart = Date.now();
+
+    // whisper.rn's new_segment_callback used to crash the iOS file path (its
+    // user_data was a stack struct that died before the callback fired); our
+    // whisper.rn+0.5.5 patch hoists it so streaming works on both platforms.
+    const transcribeOpts = this.buildTranscribeOpts(options, {
+      language,
+      maxThreads,
+      nProcessors,
+      tStart,
     });
 
-    const { result } = await promise;
-    return result;
+    const { stop, promise } = this.context.transcribe(
+      filePath,
+      transcribeOpts as Parameters<WhisperContext['transcribe']>[1],
+    );
+    this.fileTranscribeStop = stop;
+
+    try {
+      const res = await promise;
+      const result = res.result;
+      // The local whisper.rn type shim only declares `result`; segments exist
+      // at runtime (whisper.cpp t0/t1 in centiseconds).
+      const segments = (res as unknown as {
+        segments?: { text: string; t0: number; t1: number }[];
+      }).segments;
+      if (options?.onSegments && Array.isArray(segments)) {
+        try {
+          options.onSegments(segments);
+        } catch (err) {
+          logger.warn(`[Whisper] onSegments callback threw: ${String(err)}`);
+        }
+      }
+      const totalMs = Date.now() - tStart;
+      logger.log(
+        `[Whisper] transcribeFile DONE elapsed=${(totalMs / 1000).toFixed(1)}s ` +
+          `outputLen=${result.length} preview="${result.slice(0, 100)}"`,
+      );
+      return result;
+    } catch (e) {
+      const totalMs = Date.now() - tStart;
+      logger.error(`[Whisper] transcribeFile FAILED after ${(totalMs / 1000).toFixed(1)}s`, e);
+      throw e;
+    } finally {
+      this.fileTranscribeStop = null;
+    }
+  }
+
+  /**
+   * Cancels an in-flight file transcription. The Stop button calls this so
+   * whisper.cpp actually stops, otherwise the next Transcribe tap throws
+   * "Context is already transcribing".
+   */
+  async stopFileTranscription(): Promise<void> {
+    const fn = this.fileTranscribeStop;
+    this.fileTranscribeStop = null;
+    if (!fn) {
+      logger.log('[Whisper] stopFileTranscription: no active file transcription');
+      return;
+    }
+    logger.log('[Whisper] stopFileTranscription: cancelling native job');
+    try { await fn(); }
+    catch (e) { logger.warn(`[Whisper] stopFileTranscription threw: ${String(e)}`); }
   }
 }
 

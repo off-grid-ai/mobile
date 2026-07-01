@@ -134,9 +134,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
               <Text style={styles.title}>Off Grid</Text>
               {showIcon && <PulsatingIcon onPress={openSheet} />}
             </View>
-            <TouchableOpacity onPress={() => navigation.navigate('ProDetail')} hitSlop={8} style={styles.crownButton}>
-              <IconMC name="crown" size={16} color={colors.primary} />
-            </TouchableOpacity>
+            <View style={styles.headerRight}>
+              <TouchableOpacity onPress={() => navigation.navigate('Settings')} hitSlop={8} style={styles.iconButton}>
+                <Icon name="settings" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.navigate('ProDetail')} hitSlop={8} style={styles.crownButton}>
+                <IconMC name="crown" size={16} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Collapsed Models summary — tap to open the manager sheet. Both the

@@ -297,9 +297,45 @@ describe('WhisperService', () => {
 
       await whisperService.loadModel('/path/to/model.bin');
 
-      expect(initWhisper).toHaveBeenCalledWith({ filePath: '/path/to/model.bin' });
+      expect(initWhisper).toHaveBeenCalledWith({
+        filePath: '/path/to/model.bin',
+        useGpu: false,
+        useFlashAttn: false,
+        useCoreMLIos: false,
+      });
       expect(whisperService.isModelLoaded()).toBe(true);
       expect(whisperService.getLoadedModelPath()).toBe('/path/to/model.bin');
+    });
+
+    it('falls back to CPU when CoreML requested but the encoder asset is missing', async () => {
+      // Valid model file, but the ggml-<model>-encoder.mlmodelc bundle is absent.
+      // Enabling CoreML without it makes whisper.rn crash at 0% on some iOS devices,
+      // so the guard must silently downgrade to CPU (useCoreMLIos: false).
+      mockedRNFS.stat.mockResolvedValue({ size: 75 * 1024 * 1024, isFile: () => true } as any);
+      mockedRNFS.exists.mockImplementation(async (p: string) =>
+        !p.endsWith('-encoder.mlmodelc'),
+      );
+      const mockContext = { id: 'ctx', release: jest.fn(), transcribeRealtime: jest.fn(), transcribe: jest.fn() };
+      mockedInitWhisper.mockResolvedValue(mockContext as any);
+
+      await whisperService.loadModel('/path/to/model.bin', { useCoreML: true });
+
+      expect(initWhisper).toHaveBeenCalledWith(
+        expect.objectContaining({ filePath: '/path/to/model.bin', useCoreMLIos: false }),
+      );
+    });
+
+    it('enables CoreML when the encoder asset is present', async () => {
+      mockedRNFS.stat.mockResolvedValue({ size: 75 * 1024 * 1024, isFile: () => true } as any);
+      mockedRNFS.exists.mockResolvedValue(true); // both the .bin and the .mlmodelc exist
+      const mockContext = { id: 'ctx', release: jest.fn(), transcribeRealtime: jest.fn(), transcribe: jest.fn() };
+      mockedInitWhisper.mockResolvedValue(mockContext as any);
+
+      await whisperService.loadModel('/path/to/model.bin', { useCoreML: true, useGpu: true, useFlashAttn: true });
+
+      expect(initWhisper).toHaveBeenCalledWith(
+        expect.objectContaining({ useCoreMLIos: true, useGpu: true, useFlashAttn: true }),
+      );
     });
 
     it('unloads different model before loading new one', async () => {
@@ -761,7 +797,8 @@ describe('WhisperService', () => {
         })),
       };
       mockedInitWhisper.mockResolvedValueOnce(mockContext as any);
-      await whisperService.loadModel('/path/model.bin');
+      // English-only model (.en.bin) so transcribeFile forces language 'en'.
+      await whisperService.loadModel('/path/model.en.bin');
 
       const result = await whisperService.transcribeFile('/audio.wav');
 

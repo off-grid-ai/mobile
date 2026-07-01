@@ -2,13 +2,14 @@ import React, { useState, useRef } from 'react';
 
 let _attachmentIdSeq = 0;
 const nextAttachmentId = () => `${Date.now()}-${(++_attachmentIdSeq).toString(36)}`;
-import { View, Text, Image, ScrollView, TouchableOpacity, Platform, ActionSheetIOS } from 'react-native';
+import { View, Text, Image, ScrollView, TouchableOpacity, Platform, ActionSheetIOS, ActivityIndicator } from 'react-native';
 import { launchImageLibrary, launchCamera, Asset } from 'react-native-image-picker';
 import { pick, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import Icon from 'react-native-vector-icons/Feather';
 import { useTheme, useThemedStyles } from '../../theme';
 import { MediaAttachment } from '../../types';
 import { documentService } from '../../services/documentService';
+import { takePendingChatAttachments } from '../../services/chatAttachmentInbox';
 import { AlertState, showAlert, hideAlert } from '../CustomAlert';
 import { createStyles } from './styles';
 import { isPickerStuck } from '../../utils/pickerErrorUtils';
@@ -16,7 +17,9 @@ import { isPickerStuck } from '../../utils/pickerErrorUtils';
 // ─── useAttachments hook ──────────────────────────────────────────────────────
 
 export function useAttachments(setAlertState: (state: AlertState) => void) {
-  const [attachments, setAttachments] = useState<MediaAttachment[]>([]);
+  // Seed from the inbox (e.g. a transcript handed off by the Pro recorder's
+  // "Attach to chat"), consumed once on mount.
+  const [attachments, setAttachments] = useState<MediaAttachment[]>(() => takePendingChatAttachments());
   const isPickingRef = useRef(false);
 
   const addAttachments = (assets: Asset[]) => {
@@ -133,9 +136,13 @@ export function useAttachments(setAlertState: (state: AlertState) => void) {
 interface AttachmentPreviewProps {
   attachments: MediaAttachment[];
   onRemove: (id: string) => void;
+  // Summarize a document/transcript attachment that may be too large for the
+  // context window. Optional so other ChatInput consumers can omit it.
+  onSummarize?: (attachment: MediaAttachment) => void;
+  summarizingId?: string | null;
 }
 
-export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({ attachments, onRemove }) => {
+export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({ attachments, onRemove, onSummarize, summarizingId }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
 
@@ -149,36 +156,67 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({ attachment
       contentContainerStyle={styles.attachmentsContent}
       showsHorizontalScrollIndicator={false}
     >
-      {attachments.map(attachment => (
-        <View key={attachment.id} testID={`attachment-preview-${attachment.id}`} style={styles.attachmentPreview}>
-          {attachment.type === 'image' ? (
-            <Image
-              testID={`attachment-image-${attachment.id}`}
-              source={{ uri: attachment.uri }}
-              style={styles.attachmentImage}
-            />
-          ) : attachment.type === 'audio' ? (
-            <View testID={`audio-preview-${attachment.id}`} style={styles.documentPreview}>
-              <Icon name="mic" size={24} color={colors.primary} />
-              <Text style={styles.documentName} numberOfLines={2}>Voice</Text>
-            </View>
-          ) : (
-            <View testID={`document-preview-${attachment.id}`} style={styles.documentPreview}>
-              <Icon name="file-text" size={24} color={colors.primary} />
-              <Text style={styles.documentName} numberOfLines={2}>
-                {attachment.fileName || 'Document'}
-              </Text>
-            </View>
-          )}
-          <TouchableOpacity
-            testID={`remove-attachment-${attachment.id}`}
-            style={styles.removeAttachment}
-            onPress={() => onRemove(attachment.id)}
+      {attachments.map(attachment => {
+        const canSummarize = !!onSummarize && !!attachment.textContent && attachment.type !== 'image';
+        const isBusy = summarizingId === attachment.id;
+        return (
+          <View
+            key={attachment.id}
+            testID={`attachment-preview-${attachment.id}`}
+            style={[styles.attachmentPreview, canSummarize && styles.attachmentPreviewDoc]}
           >
-            <Text style={styles.removeAttachmentText}>&times;</Text>
-          </TouchableOpacity>
-        </View>
-      ))}
+            {attachment.type === 'image' ? (
+              <Image
+                testID={`attachment-image-${attachment.id}`}
+                source={{ uri: attachment.uri }}
+                style={styles.attachmentImage}
+              />
+            ) : attachment.type === 'audio' ? (
+              <View testID={`audio-preview-${attachment.id}`} style={styles.documentPreview}>
+                <Icon name="mic" size={24} color={colors.primary} />
+                <Text style={styles.documentName} numberOfLines={2}>Voice</Text>
+              </View>
+            ) : (
+              <View
+                testID={`document-preview-${attachment.id}`}
+                style={[styles.documentPreview, canSummarize && styles.documentPreviewDoc]}
+              >
+                <View style={styles.documentNameRow}>
+                  <Icon name="file-text" size={18} color={colors.primary} />
+                  <Text style={styles.documentName} numberOfLines={1}>
+                    {attachment.fileName || 'Document'}
+                  </Text>
+                </View>
+                {canSummarize ? (
+                  isBusy ? (
+                    <View style={styles.summarizeBusy}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={styles.summarizeBusyText}>Summarizing</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      testID={`summarize-attachment-${attachment.id}`}
+                      style={styles.summarizeButton}
+                      onPress={() => onSummarize!(attachment)}
+                      activeOpacity={0.8}
+                    >
+                      <Icon name="zap" size={11} color={colors.background} />
+                      <Text style={styles.summarizeButtonText}>Summarize</Text>
+                    </TouchableOpacity>
+                  )
+                ) : null}
+              </View>
+            )}
+            <TouchableOpacity
+              testID={`remove-attachment-${attachment.id}`}
+              style={styles.removeAttachment}
+              onPress={() => onRemove(attachment.id)}
+            >
+              <Text style={styles.removeAttachmentText}>&times;</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
     </ScrollView>
   );
 };

@@ -282,8 +282,12 @@ class LLMService {
   private async manageContextWindow(messages: Message[], _extraReserve = 0): Promise<Message[]> {
     return messages;
   }
-  /** Generate a completion with a hard token cap (used for summarization, not user-facing). */
-  async generateWithMaxTokens(messages: Message[], maxTokens: number): Promise<string> {
+  /**
+   * Generate a completion with a hard token cap (used for summarization, not
+   * user-facing). Pass onToken to stream the output as it is produced; the
+   * delta is the newly generated token text.
+   */
+  async generateWithMaxTokens(messages: Message[], maxTokens: number, onToken?: (delta: string) => void): Promise<string> {
     if (!this.context) throw new Error('No model loaded');
     if (this.isGenerating) throw new Error('Generation already in progress');
     this.isGenerating = true;
@@ -291,9 +295,14 @@ class LLMService {
     const { settings } = useAppStore.getState();
     let fullResponse = '';
     const ctx = this.context;
+    // These internal generations (summarize, tool-selection) never want the
+    // model to "think" - reasoning wastes the token budget, is slow + hot, and
+    // leaks into the output. Force thinking OFF (for models that gate it via the
+    // thinking channel; prose chain-of-thought is additionally curbed by prompts).
+    const params = { messages: oaiMessages, ...buildCompletionParams(settings, { disableCtxShift: this.shouldDisableCtxShift() }), ...buildThinkingCompletionParams(false, this.isGemma4Model()), n_predict: maxTokens };
     const completionWork = safeCompletion(ctx, () => ctx.completion(
-      { messages: oaiMessages, ...buildCompletionParams(settings, { disableCtxShift: this.shouldDisableCtxShift() }), n_predict: maxTokens },
-      (data) => { if (this.isGenerating && data.token) fullResponse += data.token; },
+      params,
+      (data) => { if (this.isGenerating && data.token) { fullResponse += data.token; onToken?.(data.token); } },
     ), 'generateWithMaxTokens');
     this.activeCompletionPromise = completionWork.then(() => { }, () => { });
     try { await completionWork; return fullResponse.trim(); } finally { this.isGenerating = false; this.activeCompletionPromise = null; }

@@ -44,6 +44,11 @@ describe('WhisperService — branch coverage', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
     jest.clearAllMocks();
+    // clearAllMocks() clears call history but NOT the mockResolvedValueOnce
+    // queue, so an unconsumed once from a prior test would shift these
+    // ordered exists()/stat() chains. Reset them for true per-test isolation.
+    mockedRNFS.exists.mockReset();
+    mockedRNFS.stat.mockReset();
     resetService();
     mockedBDS.isAvailable.mockReturnValue(true);
     mockedBDS.cancelDownload.mockResolvedValue(undefined as any);

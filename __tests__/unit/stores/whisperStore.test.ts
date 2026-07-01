@@ -164,6 +164,7 @@ describe('whisperStore', () => {
       expect(mockWhisperService.getModelPath).toHaveBeenCalledWith('ggml-tiny');
       expect(mockWhisperService.loadModel).toHaveBeenCalledWith(
         '/models/ggml-tiny',
+        undefined,
       );
       expect(getState().isModelLoaded).toBe(true);
     });
@@ -252,6 +253,7 @@ describe('whisperStore', () => {
       expect(mockWhisperService.getModelPath).toHaveBeenCalledWith('ggml-tiny');
       expect(mockWhisperService.loadModel).toHaveBeenCalledWith(
         '/models/ggml-tiny',
+        undefined,
       );
       expect(getState().isModelLoaded).toBe(true);
       expect(getState().isModelLoading).toBe(false);

@@ -23,6 +23,9 @@ export { documentService } from './documentService';
 export { AVAILABLE_TOOLS, getToolsAsOpenAISchema, buildToolSystemPromptHint, executeToolCall } from './tools';
 export type { ToolDefinition, ToolCall, ToolResult } from './tools';
 export { contextCompactionService } from './contextCompaction';
+export { transcriptSummarizer } from './transcriptSummarizer';
+export type { SummarizeProgress } from './transcriptSummarizer';
+export { setPendingChatAttachments, takePendingChatAttachments } from './chatAttachmentInbox';
 export { ragService, retrievalService } from './rag';
 export type { RagDocument, RagSearchResult, SearchResult, IndexProgress } from './rag';
 // Providers

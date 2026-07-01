@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { whisperService, WHISPER_MODELS } from '../services';
 import { modelResidencyManager } from '../services/modelResidency';
+import { logMemory } from '../utils/memorySnapshot';
 
 interface WhisperState {
   // Active (selected) model ID
@@ -27,7 +28,7 @@ interface WhisperState {
   downloadFromUrl: (url: string, modelId: string) => Promise<void>;
   /** Activate an already-downloaded model without re-downloading. */
   selectModel: (modelId: string) => Promise<void>;
-  loadModel: () => Promise<void>;
+  loadModel: (options?: { useGpu?: boolean; useFlashAttn?: boolean; useCoreML?: boolean }) => Promise<void>;
   unloadModel: () => Promise<void>;
   deleteModel: () => Promise<void>;
   /** Delete a specific on-disk model (active or not). */
@@ -115,7 +116,7 @@ export const useWhisperStore = create<WhisperState>()(
         }
       },
 
-      loadModel: async () => {
+      loadModel: async (options?: { useGpu?: boolean; useFlashAttn?: boolean; useCoreML?: boolean }) => {
         const { downloadedModelId, isModelLoading } = get();
         if (!downloadedModelId) {
           set({ error: 'No model downloaded' });
@@ -137,7 +138,15 @@ export const useWhisperStore = create<WhisperState>()(
           // then register so future loads can evict it.
           await modelResidencyManager.runExclusive('load:whisper', async () => {
             await modelResidencyManager.makeRoomFor({ key: 'whisper', type: 'whisper', sizeMB });
-            await whisperService.loadModel(modelPath);
+            // Footprint before/after load. On a 4 GB iOS device a large model
+            // (medium/large ~1.5 GB) can push the app past the jetsam limit and
+            // the OS kills it mid-load - which presents as a crash. The
+            // before/after pair localizes a kill to model load vs transcription.
+            // Fire-and-forget: diagnostics must not add await points to the load
+            // critical path (logger.log flushes synchronously regardless).
+            logMemory(`whisper:beforeLoad model=${downloadedModelId} ~${sizeMB}MB`).catch(() => {});
+            await whisperService.loadModel(modelPath, options);
+            logMemory('whisper:afterLoad').catch(() => {});
             modelResidencyManager.register(
               { key: 'whisper', type: 'whisper', sizeMB },
               () => get().unloadModel(),

@@ -45,6 +45,7 @@ import {
   MainTabParamList,
 } from './types';
 import { useRegisteredScreens } from './screenRegistry';
+import { MemoryTabScreen } from '../screens/MemoryTabScreen';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -55,7 +56,7 @@ const TAB_ICON_MAP: Record<string, string> = {
   ChatsTab: 'message-circle',
   ProjectsTab: 'folder',
   ModelsTab: 'cpu',
-  SettingsTab: 'settings',
+  MemoryTab: 'mic',
 };
 
 const TabBarIcon: React.FC<{ name: string; focused: boolean }> = ({ name, focused }) => {
@@ -173,9 +174,9 @@ const MainTabs: React.FC = () => {
           })}
         />
         <Tab.Screen
-          name="SettingsTab"
-          component={SettingsScreen}
-          options={{ tabBarLabel: 'Settings', tabBarButtonTestID: 'settings-tab' }}
+          name="MemoryTab"
+          component={MemoryTabScreen}
+          options={{ tabBarLabel: 'Recorder', tabBarButtonTestID: 'recorder-tab' }}
           listeners={() => ({
             tabPress: () => { triggerHaptic('selection'); },
           })}
@@ -232,6 +233,7 @@ export const AppNavigator: React.FC = () => {
         />
         <RootStack.Screen name="KnowledgeBase" component={KnowledgeBaseScreen} />
         <RootStack.Screen name="DocumentPreview" component={DocumentPreviewScreen} />
+        <RootStack.Screen name="Settings" component={SettingsScreen} />
         <RootStack.Screen name="ModelSettings" component={ModelSettingsScreen} />
         <RootStack.Screen name="RemoteServers" component={RemoteServersScreen} />
         <RootStack.Screen name="DeviceInfo" component={DeviceInfoScreen} />

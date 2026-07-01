@@ -451,24 +451,12 @@ const TOOL_BEHAVIOR_GUIDANCE = '\n\nMake good use of the tools available to you.
 /** Tools that need precise time-of-day to resolve relative phrases like "in half an hour". */
 const TIME_SENSITIVE_TOOL_IDS = ['create_calendar_event', 'read_calendar_events'];
 
-/**
- * Build a current-date(/time) context line for the system prompt. On-device models
- * have no built-in clock, so without this they cannot resolve relative dates
- * ("tomorrow", "next Friday") into the ISO timestamps the calendar tools need.
- *
- * `precise` controls the prompt-cache tradeoff:
- *  - true  -> full minute/second timestamp, so "in half an hour" resolves correctly.
- *    The timestamp changes every turn, which breaks llama.rn prefix-cache reuse from
- *    this point on. Only used when a time-sensitive tool (calendar) is enabled.
- *  - false -> date only. Stable for the whole day, so the prompt cache is preserved;
- *    day-relative phrasing still works, but sub-day phrasing does not.
- *
- * Computed at send-time (not module load) so it stays current across a session.
- */
-function buildDateTimeContext(precise: boolean): string {
+// Shared current-time parts, computed at send-time (on-device models have no clock).
+function nowParts() {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   let dayOfWeek = '';
   let tz = '';
   try {
@@ -477,13 +465,35 @@ function buildDateTimeContext(precise: boolean): string {
   } catch {
     // toLocaleDateString/Intl can be unavailable on some JS engines; date alone still helps.
   }
+  return { dateStr, timeStr, dayOfWeek, tz };
+}
+
+/**
+ * Date-only context for the SYSTEM prompt. On-device models have no clock, so this
+ * lets them resolve day-relative phrasing ("tomorrow", "next Friday"). The date only
+ * changes once a day, so the system prompt + tool schemas stay byte-identical across
+ * turns and the (expensive ~800-token) prefix is reused from llama.rn's cache instead
+ * of being re-prefilled every turn. The exact time lives elsewhere (see below) so it
+ * never busts this prefix.
+ */
+function buildDateContext(): string {
+  const { dateStr, dayOfWeek, tz } = nowParts();
   const dayPart = dayOfWeek ? ` Today is ${dayOfWeek}.` : '';
   const tzPart = tz ? ` Timezone: ${tz}.` : '';
-  if (precise) {
-    const local = `${dateStr}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-    return `\n\nThe current date and time is ${local} (device local time, format YYYY-MM-DDTHH:MM:SS).${dayPart}${tzPart} When the user refers to relative dates or times such as "today", "tomorrow", "next Friday", or "in half an hour", resolve them against this current date and time.`;
-  }
   return `\n\nThe current date is ${dateStr} (device local date, format YYYY-MM-DD).${dayPart}${tzPart} When the user refers to relative dates such as "today", "tomorrow", or "next Friday", resolve them against this current date.`;
+}
+
+/**
+ * Exact current time, appended to the LATEST USER MESSAGE rather than the system
+ * prompt. The latest user turn is new (uncached) every time anyway, so carrying the
+ * volatile timestamp here costs nothing extra and keeps the system+tools prefix
+ * stable for cache reuse. Lets the model resolve "now" / "in half an hour" precisely.
+ * Only added when a time-sensitive (calendar) tool is enabled.
+ */
+function buildExactTimeNote(): string {
+  const { dateStr, timeStr, tz } = nowParts();
+  const tzPart = tz ? `, ${tz}` : '';
+  return `\n\n(Current local date and time: ${dateStr}T${timeStr}${tzPart}. Resolve "now", "right now", "in half an hour", and similar against this exact time.)`;
 }
 
 function augmentSystemPromptForTools(
@@ -492,7 +502,10 @@ function augmentSystemPromptForTools(
   nativeToolCalling = false,
 ): Message[] {
   const sysIdx = messages.findIndex(m => m.role === 'system');
-  if (sysIdx === -1) return messages;
+  if (sysIdx === -1) {
+    logger.log(`[ToolLoop] augmentSystemPrompt: NO system message - date NOT injected (enabledToolIds=[${enabledToolIds.join(',')}])`);
+    return messages;
+  }
   const sys = messages[sysIdx];
   const existing = typeof sys.content === 'string' ? sys.content : '';
   // Extension text hints (e.g. MCP's "call tools using <mcp_tool_call>{…}") only make
@@ -503,9 +516,31 @@ function augmentSystemPromptForTools(
   const extHints = nativeToolCalling
     ? ''
     : getToolExtensions().map(e => e.getSystemPromptHint()).filter(Boolean).join('');
+  // System prompt gets only the STABLE date (changes once a day) + tool guidance, so the
+  // system+tools prefix stays cacheable turn-to-turn.
+  const updatedSys = { ...sys, content: existing + TOOL_BEHAVIOR_GUIDANCE + buildDateContext() + extHints };
+  const out = [...messages.slice(0, sysIdx), updatedSys, ...messages.slice(sysIdx + 1)];
+
+  // For time-sensitive (calendar) tools, append the EXACT time to the latest user
+  // message instead of the system prefix — keeps the big prefix cacheable while still
+  // giving the model sub-day precision.
   const precise = enabledToolIds.some(id => TIME_SENSITIVE_TOOL_IDS.includes(id));
-  const updated = { ...sys, content: existing + TOOL_BEHAVIOR_GUIDANCE + buildDateTimeContext(precise) + extHints };
-  return [...messages.slice(0, sysIdx), updated, ...messages.slice(sysIdx + 1)];
+  let exactTimeAppended = false;
+  if (precise) {
+    for (let i = out.length - 1; i >= 0; i--) {
+      if (out[i].role === 'user' && typeof out[i].content === 'string') {
+        out[i] = { ...out[i], content: (out[i].content as string) + buildExactTimeNote() };
+        exactTimeAppended = true;
+        break;
+      }
+    }
+  }
+  logger.log(
+    `[ToolLoop] augmentSystemPrompt: enabledToolIds=[${enabledToolIds.join(',')}] ` +
+      `timeSensitive(precise)=${precise} nativeToolCalling=${nativeToolCalling} ` +
+      `dateInSystem=true exactTimeOnLatestUser=${exactTimeAppended}`,
+  );
+  return out;
 }
 
 interface CallLLMOptions { onStream?: (data: StreamToken) => void; forceRemote?: boolean; disableThinking?: boolean; conversationId?: string; ctx?: ToolLoopContext; }
@@ -527,6 +562,11 @@ async function callLLMWithRetry(
   // LiteRT (OpenApiTool), remote providers, and llama with a Jinja tool template all do
   // native tool calling — the text hint must be suppressed for them (see augmentSystemPromptForTools).
   const nativeToolCalling = (isLiteRTActive() && !!conversationId) || useRemote || llmService.supportsToolCalling();
+  logger.log(
+    `[ToolLoop] preLLM: tools=${tools.length} extCount=${extCount} ` +
+      `enabledToolIds=[${(ctx?.enabledToolIds ?? []).join(',')}] ` +
+      `willAugment=${tools.length > 0 || extCount > 0} liteRT=${isLiteRTActive()} useRemote=${useRemote} nativeToolCalling=${nativeToolCalling}`,
+  );
   const augmentedMessages = (tools.length > 0 || extCount > 0)
     ? augmentSystemPromptForTools(messages, ctx?.enabledToolIds, nativeToolCalling)
     : messages;
