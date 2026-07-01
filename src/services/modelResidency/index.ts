@@ -226,8 +226,12 @@ class ModelResidencyManager {
     const plan = planEviction(residents, spec, budgetMB);
     // [MEM-SM] trace (kept forever): the exact numbers behind every fit decision.
     // budgetForSpec already folds in the live os_proc budget under dirty pressure, so
-    // there's one owner of the memory math — planEviction enforces it.
-    logger.log(`[MEM-SM] makeRoomFor ${spec.key} sizeMB=${spec.sizeMB} budgetMB=${budgetMB} residents=[${residents.map(r => `${r.key}:${r.sizeMB}${r.pinned ? '(pinned)' : ''}`).join(',')}] fits=${plan.fits} evict=[${plan.evict.map(e => e.key).join(',')}]`);
+    // there's one owner of the memory math — planEviction enforces it. Also log the raw
+    // os_proc figures (available/total) so a refusal is explainable: is real free RAM
+    // genuinely low, or is the app footprint bloated?
+    const availMB = Math.round(hardwareService.getAvailableMemoryGB() * 1024);
+    const totalMB = Math.round(hardwareService.getTotalMemoryGB() * 1024);
+    logger.log(`[MEM-SM] makeRoomFor ${spec.key} sizeMB=${spec.sizeMB} dirty=${!!spec.dirtyMemory} budgetMB=${budgetMB} os_procAvailMB=${availMB} totalMB=${totalMB} residents=[${residents.map(r => `${r.key}:${r.sizeMB}${r.pinned ? '(pinned)' : ''}`).join(',')}] fits=${plan.fits} evict=[${plan.evict.map(e => e.key).join(',')}]`);
     if (!plan.fits) {
       // Won't fit even after the planned evictions — DON'T evict (otherwise we'd
       // strand the device with nothing). The caller blocks the load.
