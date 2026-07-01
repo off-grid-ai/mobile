@@ -29,6 +29,10 @@ export interface Resident {
   sizeMB: number;
   /** Pinned residents are never evicted (e.g. the classifier). */
   pinned?: boolean;
+  /** True for dirty-memory models (CoreML/ONNX image): their working set can't be
+   *  paged out like clean mmap weights, so their presence triggers the live os_proc
+   *  gate on other loads. */
+  dirtyMemory?: boolean;
   /** Epoch ms of last use, for LRU. */
   lastUsedAt: number;
 }

@@ -156,11 +156,19 @@ class ModelResidencyManager {
   private budgetForSpec(spec: ResidentSpec): number {
     if (this.budgetOverrideMB != null) return this.budgetOverrideMB;
     const physicalCapMB = computeBudgetMB(hardwareService.getTotalMemoryGB() * 1024);
-    if (!spec.dirtyMemory) {
-      // mmap'd: physical RAM is the ceiling (clean, file-backed weights).
+    // Dirty-memory PRESSURE — the incoming model is dirty, OR a dirty model (CoreML/ONNX
+    // image) is already resident. A dirty model's working set/compile spike can't be
+    // paged out like clean mmap weights, so while one is present EVERY load (even an
+    // mmap sidecar) must also respect real free RAM, or stacking onto the spike jetsams
+    // the app. With no dirty pressure, mmap GGUF stays bounded by physical RAM only.
+    const dirtyPressure = !!spec.dirtyMemory || [...this.residents.values()].some(r => r.dirtyMemory);
+    if (!dirtyPressure) {
+      // mmap'd, no dirty pressure: physical RAM is the ceiling (clean, file-backed
+      // weights page in even when instantaneous available is low).
       return Math.round(Math.max(MIN_BUDGET_MB, physicalCapMB));
     }
-    // dirty: also gate on real free RAM (+ evictable residents − OS headroom).
+    // Under dirty pressure: also gate on real free RAM (+ evictable residents − OS
+    // headroom). This is the single owner of the live os_proc budget.
     const availableMB = hardwareService.getAvailableMemoryGB() * 1024;
     const residentMB = [...this.residents.values()].reduce((sum, r) => sum + r.sizeMB, 0);
     const dynamicMB = availableMB + residentMB - DIRTY_AVAILABILITY_HEADROOM_MB;
@@ -216,8 +224,9 @@ class ModelResidencyManager {
     const budgetMB = this.budgetForSpec(spec);
     const residents = this.planningResidents();
     const plan = planEviction(residents, spec, budgetMB);
-    // [MEM-SM] trace (kept forever): the exact numbers behind every fit decision —
-    // real per-process budget vs the model estimate vs what's resident/evictable.
+    // [MEM-SM] trace (kept forever): the exact numbers behind every fit decision.
+    // budgetForSpec already folds in the live os_proc budget under dirty pressure, so
+    // there's one owner of the memory math — planEviction enforces it.
     logger.log(`[MEM-SM] makeRoomFor ${spec.key} sizeMB=${spec.sizeMB} budgetMB=${budgetMB} residents=[${residents.map(r => `${r.key}:${r.sizeMB}${r.pinned ? '(pinned)' : ''}`).join(',')}] fits=${plan.fits} evict=[${plan.evict.map(e => e.key).join(',')}]`);
     if (!plan.fits) {
       // Won't fit even after the planned evictions — DON'T evict (otherwise we'd

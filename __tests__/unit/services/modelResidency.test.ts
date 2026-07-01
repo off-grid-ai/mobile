@@ -312,6 +312,35 @@ describe('ModelResidencyManager', () => {
       expect(evicted).toEqual([]);
     });
 
+    it('REGRESSION: under dirty pressure, a clean sidecar is REFUSED when live RAM is low (the jetsam fix)', async () => {
+      modelResidencyManager.setBudgetOverrideMB(null);
+      jest.spyOn(hardwareService, 'getTotalMemoryGB').mockReturnValue(12);
+      jest.spyOn(hardwareService, 'getAvailableMemoryGB').mockReturnValue(0.3); // ~300MB free during the image compile spike
+      jest.spyOn(hardwareService, 'refreshMemoryInfo').mockResolvedValue(undefined as never);
+      // A 7GB dirty image model is resident and generating (vetoes its own eviction).
+      modelResidencyManager.register(
+        { key: 'image', type: 'image', sizeMB: 7279, dirtyMemory: true, canEvict: () => false },
+        jest.fn().mockResolvedValue(undefined), 1);
+      // The static budget (7279+142 ≤ 0.78*12GB) would say fits, but the live os_proc
+      // available is near-zero from the CoreML compile — the sidecar must be refused,
+      // not stacked onto the spike (the device OOM/jetsam).
+      const { fits, evicted } = await modelResidencyManager.makeRoomFor({ key: 'whisper', type: 'whisper', sizeMB: 142 });
+      expect(fits).toBe(false);
+      expect(evicted).toEqual([]);
+    });
+
+    it('the same sidecar co-loads under dirty pressure when live RAM is healthy (no false refusal)', async () => {
+      modelResidencyManager.setBudgetOverrideMB(null);
+      jest.spyOn(hardwareService, 'getTotalMemoryGB').mockReturnValue(12);
+      jest.spyOn(hardwareService, 'getAvailableMemoryGB').mockReturnValue(3); // healthy free RAM
+      jest.spyOn(hardwareService, 'refreshMemoryInfo').mockResolvedValue(undefined as never);
+      modelResidencyManager.register(
+        { key: 'image', type: 'image', sizeMB: 7279, dirtyMemory: true, canEvict: () => false },
+        jest.fn().mockResolvedValue(undefined), 1);
+      const { fits } = await modelResidencyManager.makeRoomFor({ key: 'whisper', type: 'whisper', sizeMB: 142 });
+      expect(fits).toBe(true);
+    });
+
     it("does NOT evict (don't strand) when the model can't fit even after full eviction", async () => {
       modelResidencyManager.setBudgetOverrideMB(1000);
       jest.spyOn(hardwareService, 'refreshMemoryInfo').mockResolvedValue(undefined as never);
