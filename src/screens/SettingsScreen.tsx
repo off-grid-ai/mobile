@@ -328,6 +328,25 @@ export const SettingsScreen: React.FC = () => {
           </AnimatedEntry>
         )}
 
+        {/* TEMPORARY (testing): reset Pro so the free -> activate flow can be re-tested
+            on a release build, where the DEV toggle above is inert (__DEV__ is false).
+            This clears the real stored license. Remove or re-gate behind __DEV__ before
+            shipping. A restart is needed to fully unload boot-registered Pro features. */}
+        <View style={styles.devButtonGroup}>
+          <TouchableOpacity
+            style={styles.devButton}
+            onPress={async () => {
+              setDevProDisabled(true);
+              await clearProForTesting();
+              setHasRegisteredPro(false);
+              Alert.alert('Pro reset', 'License cleared. Restart the app, then activate a key again to re-test.');
+            }}
+          >
+            <Icon name="rotate-ccw" size={14} color={colors.textMuted} />
+            <Text style={styles.devButtonText}>Reset Pro (testing)</Text>
+          </TouchableOpacity>
+        </View>
+
         <MadeWithLove />
         {__DEV__ && <DebugLogsScreen visible={showDebugLogs} onClose={() => setShowDebugLogs(false)} />}
       </ScrollView>
