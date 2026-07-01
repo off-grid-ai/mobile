@@ -1,0 +1,234 @@
+# Fastlane Fastfile — Off Grid mobile release automation
+# Docs: https://docs.fastlane.tools
+#
+# Lanes:
+#   fastlane bump                 bump version (package.json + android + ios), no commit
+#   fastlane android beta         build dev AAB, upload to Play internal track
+#   fastlane android release      build production AAB, upload to Play production
+#   fastlane android metadata     push store listing text/images (Supply)
+#   fastlane ios beta             build, upload to TestFlight
+#   fastlane ios release          build, upload to App Store
+#   fastlane ios metadata         push App Store listing (Deliver)
+#
+# Credentials are read from ENV so nothing secret is committed. See fastlane/.env.example.
+# Lanes that need credentials check for them and fail with a clear message rather than
+# half-running.
+
+require "json"
+
+# Off Grid ships no telemetry. Disable fastlane's anonymous usage analytics too.
+opt_out_usage
+
+REPO_ROOT = File.expand_path("..", __dir__)
+
+# ── helpers ────────────────────────────────────────────────────────────────
+
+def app_version
+  pkg = JSON.parse(File.read(File.join(REPO_ROOT, "package.json")))
+  pkg["version"]
+end
+
+# versionCode strategy mirrors scripts/release.sh: a unix timestamp, always increasing.
+def generate_version_code
+  Time.now.to_i.to_s
+end
+
+def require_env(*keys)
+  missing = keys.reject { |k| ENV[k] && !ENV[k].empty? }
+  return if missing.empty?
+  UI.user_error!("Missing required env var(s): #{missing.join(', ')}. See fastlane/.env.example")
+end
+
+# Decode a base64 secret to a temp file and return its path (for P12 / profile / keys).
+def write_tmp_b64(b64, filename)
+  require "base64"
+  require "tmpdir"
+  path = File.join(Dir.tmpdir, filename)
+  File.binwrite(path, Base64.decode64(b64))
+  path
+end
+
+# Apple Developer Team ID (from ios/ExportOptions.plist). Override via APPLE_TEAM_ID.
+APPLE_TEAM_ID = ENV["APPLE_TEAM_ID"] || "84V6KCAC49"
+
+# ── shared ─────────────────────────────────────────────────────────────────
+
+default_platform(:android)
+
+desc "Bump version across package.json, Android build.gradle, and iOS project"
+desc "Usage: fastlane bump [type:patch|minor|major]"
+lane :bump do |options|
+  type = options[:type] || "patch"
+  Dir.chdir(REPO_ROOT) do
+    sh("npm version #{type} --no-git-tag-version")
+  end
+  version = app_version
+  code = generate_version_code
+
+  # Android
+  gradle = File.join(REPO_ROOT, "android/app/build.gradle")
+  text = File.read(gradle)
+  text = text.sub(/versionCode .*/, "versionCode #{code}")
+  text = text.sub(/versionName .*/, "versionName \"#{version}\"")
+  File.write(gradle, text)
+
+  # iOS
+  pbxproj = File.join(REPO_ROOT, "ios/OffgridMobile.xcodeproj/project.pbxproj")
+  ios = File.read(pbxproj)
+  ios = ios.gsub(/MARKETING_VERSION = .*/, "MARKETING_VERSION = #{version};")
+  ios = ios.gsub(/CURRENT_PROJECT_VERSION = .*/, "CURRENT_PROJECT_VERSION = #{code};")
+  File.write(pbxproj, ios)
+
+  UI.success("Bumped to #{version} (versionCode #{code})")
+  version
+end
+
+# ── Android ────────────────────────────────────────────────────────────────
+
+platform :android do
+  desc "Build a signed release AAB locally — NO upload. Artifact for testing the pipeline."
+  lane :build do
+    gradle(task: "bundle", build_type: "Release", project_dir: "android/")
+    aab = File.join(REPO_ROOT, "android/app/build/outputs/bundle/release/app-release.aab")
+    UI.user_error!("AAB not found at #{aab}") unless File.exist?(aab)
+    UI.success("Built signed release AAB (no upload): #{aab}")
+  end
+
+  desc "Build a dev/beta AAB and upload to the Play Store internal track"
+  lane :beta do
+    require_env("PLAY_STORE_JSON_KEY_PATH")
+    gradle(task: "bundle", build_type: "Release", project_dir: "android/")
+    upload_to_play_store(
+      track: "internal",
+      aab: "android/app/build/outputs/bundle/release/app-release.aab",
+      json_key: ENV["PLAY_STORE_JSON_KEY_PATH"],
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      release_status: "draft"
+    )
+    UI.success("Uploaded dev build to Play internal track")
+  end
+
+  desc "Build a production AAB and upload to the Play Store production track"
+  lane :release do
+    require_env("PLAY_STORE_JSON_KEY_PATH")
+    gradle(task: "bundle", build_type: "Release", project_dir: "android/")
+    upload_to_play_store(
+      track: "production",
+      aab: "android/app/build/outputs/bundle/release/app-release.aab",
+      json_key: ENV["PLAY_STORE_JSON_KEY_PATH"],
+      skip_upload_changelogs: false,
+      release_status: "draft" # human confirms rollout in Play Console
+    )
+    UI.success("Uploaded production build to Play (draft — confirm rollout in console)")
+  end
+
+  desc "Push Android store listing text + images (no build)"
+  lane :metadata do
+    require_env("PLAY_STORE_JSON_KEY_PATH")
+    upload_to_play_store(
+      json_key: ENV["PLAY_STORE_JSON_KEY_PATH"],
+      skip_upload_aab: true,
+      skip_upload_apk: true
+    )
+    UI.success("Pushed Android store metadata")
+  end
+end
+
+# ── iOS ──────────────────────────────────────────────────────────────────
+
+platform :ios do
+  # Shared build helper: archives + exports an App Store IPA using the existing
+  # ExportOptions.plist and team ID (automatic signing, same as release-ios.yml).
+  private_lane :build_ios_ipa do
+    build_app(
+      workspace: "ios/OffgridMobile.xcworkspace",
+      scheme: "OffgridMobile",
+      configuration: "Release",
+      export_method: "app-store",
+      export_team_id: APPLE_TEAM_ID,
+      export_options: "ios/ExportOptions.plist",
+      output_directory: "build",
+      output_name: "OffgridMobile.ipa"
+    )
+  end
+
+  desc "Build a signed release IPA locally — NO upload. Artifact for testing the pipeline."
+  lane :build do
+    setup_signing
+    build_ios_ipa
+    ipa = File.join(REPO_ROOT, "build/OffgridMobile.ipa")
+    UI.user_error!("IPA not found at #{ipa}") unless File.exist?(ipa)
+    UI.success("Built signed release IPA (no upload): #{ipa}")
+  end
+
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    require_env("APP_STORE_CONNECT_API_KEY_PATH")
+    setup_signing
+    build_ios_ipa
+    upload_to_testflight(
+      api_key_path: ENV["APP_STORE_CONNECT_API_KEY_PATH"],
+      ipa: "build/OffgridMobile.ipa",
+      skip_waiting_for_build_processing: true
+    )
+    UI.success("Uploaded to TestFlight")
+  end
+
+  desc "Build and upload to the App Store"
+  lane :release do
+    require_env("APP_STORE_CONNECT_API_KEY_PATH")
+    setup_signing
+    build_ios_ipa
+    upload_to_app_store(
+      api_key_path: ENV["APP_STORE_CONNECT_API_KEY_PATH"],
+      ipa: "build/OffgridMobile.ipa",
+      submit_for_review: false,   # human submits in App Store Connect
+      precheck_include_in_app_purchases: false,
+      skip_screenshots: true,
+      skip_metadata: false,
+      force: true
+    )
+    UI.success("Uploaded to App Store (not submitted — submit in App Store Connect)")
+  end
+
+  desc "Push App Store listing metadata (no build)"
+  lane :metadata do
+    require_env("APP_STORE_CONNECT_API_KEY_PATH")
+    upload_to_app_store(
+      api_key_path: ENV["APP_STORE_CONNECT_API_KEY_PATH"],
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      skip_metadata: false,
+      force: true
+    )
+    UI.success("Pushed App Store metadata")
+  end
+
+  # Reuses the existing signing secrets the repo already uses for AltStore/GitHub
+  # releases (IOS_CERTIFICATE_P12, IOS_CERTIFICATE_PASSWORD, IOS_PROVISION_PROFILE,
+  # KEYCHAIN_PASSWORD). No fastlane match — same mechanism as release-ios.yml, so there
+  # is one signing scheme, not two. On a local Mac with the cert already in the login
+  # keychain, set SKIP_KEYCHAIN_IMPORT=1 to skip the temp-keychain import.
+  desc "Import the existing P12 cert + provisioning profile into a temp keychain"
+  private_lane :setup_signing do
+    if ENV["SKIP_KEYCHAIN_IMPORT"]
+      UI.message("SKIP_KEYCHAIN_IMPORT set — using the cert already in the local keychain")
+      next
+    end
+    require_env("IOS_CERTIFICATE_P12", "IOS_CERTIFICATE_PASSWORD", "KEYCHAIN_PASSWORD", "IOS_PROVISION_PROFILE")
+
+    import_certificate(
+      certificate_path: write_tmp_b64(ENV["IOS_CERTIFICATE_P12"], "certificate.p12"),
+      certificate_password: ENV["IOS_CERTIFICATE_PASSWORD"],
+      keychain_name: "app-signing.keychain-db",
+      keychain_password: ENV["KEYCHAIN_PASSWORD"],
+      create_keychain: true
+    )
+
+    # Install the provisioning profile so xcodebuild can find it.
+    profile_path = write_tmp_b64(ENV["IOS_PROVISION_PROFILE"], "profile.mobileprovision")
+    install_provisioning_profile(path: profile_path) if respond_to?(:install_provisioning_profile)
+  end
+end
