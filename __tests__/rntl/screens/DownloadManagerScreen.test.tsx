@@ -698,8 +698,9 @@ describe('DownloadManagerScreen', () => {
       fireEvent.press(getByTestId('alert-button-Yes'));
     });
 
-    // View dispatches cancel by the canonical id; the provider performs the native cancel.
-    expect(mockServiceCancel).toHaveBeenCalledWith('text:author/model-id');
+    // View dispatches cancel by the canonical id (text = the modelKey, matching the
+    // finished model's id); the provider performs the native cancel.
+    expect(mockServiceCancel).toHaveBeenCalledWith('text:author/model-id/model-file.gguf');
   });
 
   it('confirming remove download for image model cancels it', async () => {
@@ -860,7 +861,7 @@ describe('DownloadManagerScreen', () => {
       fireEvent.press(getByTestId('failed-retry-button'));
     });
 
-    expect(mockServiceRetry).toHaveBeenCalledWith('text:author/vision');
+    expect(mockServiceRetry).toHaveBeenCalledWith('text:author/vision/vision.gguf');
   });
 
   // ===== BRANCH COVERAGE TESTS =====

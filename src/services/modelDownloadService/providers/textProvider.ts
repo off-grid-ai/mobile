@@ -30,11 +30,13 @@ const TEXT_CAPABILITIES = {
   determinateProgress: true,
 } as const;
 
-const modelIdOf = (id: string): string => id.replace(/^text:/, '');
+// The text uniform id is text:<modelKey> (modelKey = repo/file), the same identity the
+// finished model carries — so an in-flight row and its completed model resolve to ONE id.
+const keyOf = (id: string): string => id.replace(/^text:/, '');
 const textEntries = (): DownloadEntry[] =>
   Object.values(useDownloadStore.getState().downloads).filter(e => e.modelType === 'text');
-const findEntry = (modelId: string): DownloadEntry | undefined =>
-  textEntries().find(e => e.modelId === modelId);
+const findEntry = (modelKey: string): DownloadEntry | undefined =>
+  textEntries().find(e => e.modelKey === modelKey);
 
 /** iOS re-start: foreground URLSession can't resume, so re-issue the download from
  *  scratch. It flows through startDownload's 3-slot cap (queued if full). Shared by
@@ -77,7 +79,7 @@ export const textProvider: DownloadProvider = {
     const out: ModelDownload[] = [];
     for (const e of textEntries()) {
       out.push({
-        id: uniformDownloadId('text', e.modelId), modelType: 'text', name: e.fileName || e.modelId,
+        id: uniformDownloadId('text', e.modelKey), modelType: 'text', name: e.fileName || e.modelId,
         sizeBytes: e.combinedTotalBytes || e.totalBytes,
         bytesDownloaded: e.bytesDownloaded + (e.mmProjBytesDownloaded ?? 0),
         progress: e.progress, status: mapStoreStatus(e.status),
@@ -98,7 +100,7 @@ export const textProvider: DownloadProvider = {
   },
 
   async cancel(id: string): Promise<void> {
-    const entry = findEntry(modelIdOf(id));
+    const entry = findEntry(keyOf(id));
     if (!entry) return;
     await modelManager.cancelBackgroundDownload(entry.downloadId)
       .catch(err => logger.log(`[DL-SM] ${id} cancel: native cancel failed err=${msg(err)}`));
@@ -108,8 +110,7 @@ export const textProvider: DownloadProvider = {
   },
 
   async retry(id: string): Promise<void> {
-    const modelId = modelIdOf(id);
-    const entry = findEntry(modelId);
+    const entry = findEntry(keyOf(id));
     if (!entry?.downloadId) return;
     if (Platform.OS === 'android') {
       useDownloadStore.getState().setStatus(entry.downloadId, 'pending');
@@ -127,16 +128,18 @@ export const textProvider: DownloadProvider = {
   },
 
   async remove(id: string): Promise<void> {
-    const modelId = modelIdOf(id);
-    const entry = findEntry(modelId);
+    // keyOf(id) is the modelKey, which for a completed model IS its model.id — so both
+    // deleteModel and removeDownloadedModel receive the right identity.
+    const key = keyOf(id);
+    const entry = findEntry(key);
     if (entry) {
       await modelManager.cancelBackgroundDownload(entry.downloadId)
         .catch(err => logger.log(`[DL-SM] ${id} remove: native cancel failed err=${msg(err)}`));
       useDownloadStore.getState().remove(entry.modelKey);
     }
-    await modelManager.deleteModel(modelId)
+    await modelManager.deleteModel(key)
       .catch(err => logger.log(`[DL-SM] ${id} remove: delete failed err=${msg(err)}`));
-    useAppStore.getState().removeDownloadedModel(modelId);
+    useAppStore.getState().removeDownloadedModel(key);
   },
 
   subscribe(onChange: () => void): () => void {
@@ -149,11 +152,12 @@ export const textProvider: DownloadProvider = {
     const registered = new Set(useAppStore.getState().downloadedModels.map(m => m.id));
     for (const e of textEntries()) {
       if (!isActiveStatus(e.status)) continue;
-      if (registered.has(e.modelId)) {
+      if (registered.has(e.modelKey)) {
         // Already on disk — this in-flight row is stale (a re-start of a completed
-        // model). Drop it so there's never both a "Downloaded" and an "Active" entry
-        // for the same model; never re-download something we already have.
-        logger.log(`[DL-SM] text:${e.modelId} reconcile: already downloaded → dropping stale row`);
+        // model). Compare by modelKey: downloadedModels are keyed by model.id which IS
+        // the modelKey (repo/file); comparing the bare repo (e.modelId) never matched, so
+        // this dedup silently never fired and left both an Active and a Downloaded entry.
+        logger.log(`[DL-SM] text:${e.modelKey} reconcile: already downloaded → dropping stale row`);
         store.remove(e.modelKey);
         continue;
       }

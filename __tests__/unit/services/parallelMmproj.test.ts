@@ -556,6 +556,76 @@ describe('Parallel mmproj download', () => {
       expect(onComplete).toHaveBeenCalledTimes(1);
     });
 
+    it('finalizes idempotently when the native move rejects but the file is already on disk (no re-finalize loop)', async () => {
+      // Device case: a record reports completed across relaunch but its localUri was
+      // cleared (moved in a prior session), so moveCompletedDownload rejects NOT_COMPLETED.
+      // The file is already at localPath — finalize from it, and purge the stale native
+      // record so restore can't re-adopt + re-fail it every foreground.
+      stubStartDownload(['42']);
+      const completeCbs = captureCompleteCallbacks();
+      await performBackgroundDownload({
+        modelId: 'test/model',
+        file: createModelFile({ name: 'model.gguf', size: 4_000_000_000 }),
+        modelsDir: MODELS_DIR,
+        backgroundDownloadContext: bgContext,
+        backgroundDownloadMetadataCallback: metadataCallback,
+      });
+
+      const onComplete = jest.fn();
+      const onError = jest.fn();
+      mockService.moveCompletedDownload.mockRejectedValue(new Error('Download 42 not completed yet'));
+      mockedRNFS.exists.mockResolvedValue(true); // the final file IS on disk
+      mockService.cancelDownload.mockResolvedValue(undefined);
+
+      watchBackgroundDownload({
+        downloadId: '42',
+        modelsDir: MODELS_DIR,
+        backgroundDownloadContext: bgContext,
+        backgroundDownloadMetadataCallback: metadataCallback,
+        onComplete,
+        onError,
+      });
+
+      await completeCbs['42']?.({ downloadId: '42', fileName: 'model.gguf' });
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(onComplete).toHaveBeenCalledTimes(1); // finalized from disk, not an error
+      expect(onError).not.toHaveBeenCalled();
+      expect(mockService.cancelDownload).toHaveBeenCalledWith('42'); // stale record purged
+    });
+
+    it('fails (not loops) when the native move rejects AND the file is genuinely absent', async () => {
+      stubStartDownload(['42']);
+      const completeCbs = captureCompleteCallbacks();
+      await performBackgroundDownload({
+        modelId: 'test/model',
+        file: createModelFile({ name: 'model.gguf', size: 4_000_000_000 }),
+        modelsDir: MODELS_DIR,
+        backgroundDownloadContext: bgContext,
+        backgroundDownloadMetadataCallback: metadataCallback,
+      });
+
+      const onComplete = jest.fn();
+      const onError = jest.fn();
+      mockService.moveCompletedDownload.mockRejectedValue(new Error('Download 42 not completed yet'));
+      mockedRNFS.exists.mockResolvedValue(false); // file NOT on disk → genuine failure
+
+      watchBackgroundDownload({
+        downloadId: '42',
+        modelsDir: MODELS_DIR,
+        backgroundDownloadContext: bgContext,
+        backgroundDownloadMetadataCallback: metadataCallback,
+        onComplete,
+        onError,
+      });
+
+      await completeCbs['42']?.({ downloadId: '42', fileName: 'model.gguf' });
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(onComplete).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalled();
+    });
+
     it('moves mmproj file on mmproj completion', async () => {
       const completeCbs = await setupVisionDownload();
 

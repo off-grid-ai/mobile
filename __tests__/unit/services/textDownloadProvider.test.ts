@@ -46,33 +46,38 @@ beforeEach(() => {
 });
 
 describe('textProvider', () => {
-  it('lists an in-flight text download as downloading', async () => {
-    const d = (await textProvider.list()).find(x => x.id === 'text:author/m');
+  // Canonical text id = text:<modelKey> (modelKey = repo/file), the SAME id the finished
+  // model carries — so an in-flight row and its completed model resolve to one id.
+  it('lists an in-flight text download as downloading (keyed by modelKey)', async () => {
+    const d = (await textProvider.list()).find(x => x.id === 'text:author/m.gguf');
     expect(d?.status).toBe('downloading');
     expect(d?.progress).toBe(0.4);
   });
 
-  it('lists completed appStore models, skipping in-flight ones', async () => {
+  it('lists completed appStore models, skipping in-flight ones (same modelKey id → deduped)', async () => {
     useAppStore.setState({ downloadedModels: [
-      { id: 'author/m', fileName: 'm.gguf', filePath: '/p' },     // dup of in-flight
-      { id: 'other/x', fileName: 'x.gguf', filePath: '/p2' },
+      { id: 'author/m.gguf', fileName: 'm.gguf', filePath: '/p' },   // dup of in-flight (model.id IS the modelKey)
+      { id: 'other/x.gguf', fileName: 'x.gguf', filePath: '/p2' },
     ] } as any);
     const list = await textProvider.list();
-    expect(list.filter(d => d.id === 'text:author/m')).toHaveLength(1);
-    expect(list.find(d => d.id === 'text:other/x')?.status).toBe('completed');
+    // Exactly ONE entry for author/m — the in-flight row and the completed model share
+    // the canonical text:author/m.gguf id, so the dedup collapses them. Pre-fix the
+    // in-flight row was text:author/m (bare repo) and this returned TWO entries for one model.
+    expect(list.filter(d => d.id.startsWith('text:author/m'))).toHaveLength(1);
+    expect(list.find(d => d.id === 'text:other/x.gguf')?.status).toBe('completed');
   });
 
   it('cancel cancels the native download and clears the store row', async () => {
-    await textProvider.cancel('text:author/m');
+    await textProvider.cancel('text:author/m.gguf');
     expect(mockMM.cancelBackgroundDownload).toHaveBeenCalledWith('dl-1');
     expect(useDownloadStore.getState().downloads['author/m.gguf']).toBeUndefined();
   });
 
-  it('remove deletes the model from modelManager + appStore', async () => {
+  it('remove deletes the model from modelManager + appStore by its modelKey id', async () => {
     const removeSpy = jest.spyOn(useAppStore.getState(), 'removeDownloadedModel');
-    await textProvider.remove('text:author/m');
-    expect(mockMM.deleteModel).toHaveBeenCalledWith('author/m');
-    expect(removeSpy).toHaveBeenCalledWith('author/m');
+    await textProvider.remove('text:author/m.gguf');
+    expect(mockMM.deleteModel).toHaveBeenCalledWith('author/m.gguf');
+    expect(removeSpy).toHaveBeenCalledWith('author/m.gguf');
   });
 
   it('reconcile re-queues an interrupted iOS download (pending, re-issued) instead of failing it', async () => {
@@ -90,7 +95,7 @@ describe('textProvider', () => {
 
   it('reconcile drops a stale in-flight row when the model is already downloaded (never 2 guys)', async () => {
     // Model is registered as completed AND has a leftover interrupted row.
-    useAppStore.setState({ downloadedModels: [{ id: 'author/m', fileName: 'm.gguf', filePath: '/p' }] } as any);
+    useAppStore.setState({ downloadedModels: [{ id: 'author/m.gguf', fileName: 'm.gguf', filePath: '/p' }] } as any);
     await textProvider.reconcile!();
     await new Promise((r) => setImmediate(r));
     // Stale row removed; no re-download of an already-downloaded model.
@@ -112,7 +117,7 @@ describe('textProvider', () => {
     afterEach(() => Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOs }));
 
     it('resets both rows to pending, retries native main + mmproj, resets mmproj, reattaches', async () => {
-      await textProvider.retry('text:author/m');
+      await textProvider.retry('text:author/m.gguf');
       // main + mmproj native retried (Android resumes the existing rows in place)
       expect(mockBG.retryDownload).toHaveBeenNthCalledWith(1, 'dl-1');
       expect(mockBG.retryDownload).toHaveBeenNthCalledWith(2, 'dl-mmproj');

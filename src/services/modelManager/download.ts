@@ -459,7 +459,29 @@ export function watchBackgroundDownload(opts: WatchDownloadOpts): void {
     cleanupListeners();
     backgroundDownloadContext.delete(downloadId);
     try {
-      const finalPath = await backgroundDownloadService.moveCompletedDownload(downloadId, ctx.localPath);
+      // Idempotent move: a native record can report 'completed' yet reject the move
+      // (NOT_COMPLETED / NOT_FOUND) when it was already moved in a PRIOR session — its
+      // localUri is cleared but the file is already at ctx.localPath. Restore re-adopts
+      // such a record every foreground, so a plain failure here loops forever
+      // ("Finalization failed: Download N not completed yet" on every launch). If the
+      // final file is already on disk, finalize from it; only a genuinely-absent file is
+      // a real failure.
+      let movedNatively = true;
+      let finalPath: string;
+      try {
+        finalPath = await backgroundDownloadService.moveCompletedDownload(downloadId, ctx.localPath);
+      } catch (moveErr) {
+        if (await RNFS.exists(ctx.localPath)) {
+          movedNatively = false;
+          finalPath = ctx.localPath;
+          logger.log('[DownloadDebug] native move rejected but file present — finalizing from disk (idempotent)', {
+            downloadId, modelId: ctx.modelId, localPath: ctx.localPath,
+            error: moveErr instanceof Error ? moveErr.message : String(moveErr),
+          });
+        } else {
+          throw moveErr;
+        }
+      }
       const mmProjFileExists = ctx.mmProjLocalPath ? await RNFS.exists(ctx.mmProjLocalPath) : false;
       const finalMmProjPath = ctx.mmProjLocalPath && mmProjFileExists ? ctx.mmProjLocalPath : undefined;
       logger.log('[DownloadDebug] Finalization paths resolved', {
@@ -491,6 +513,10 @@ export function watchBackgroundDownload(opts: WatchDownloadOpts): void {
       });
       backgroundDownloadMetadataCallback?.(downloadId, null);
       onComplete?.(model);
+      // When we finalized from an already-on-disk file (native move was skipped), the
+      // stale native record still lingers as 'completed'-without-localUri and restore
+      // would re-adopt + re-finalize it every foreground. Purge it so it can't loop.
+      if (!movedNatively) backgroundDownloadService.cancelDownload(downloadId).catch(() => {});
     } catch (error) {
       ctx.isFinalizing = false;
       logger.error('[DownloadDebug] Finalization failed', {

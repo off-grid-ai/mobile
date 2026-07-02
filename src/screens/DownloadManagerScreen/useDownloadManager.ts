@@ -36,6 +36,12 @@ function getActiveItemModelId(entry: DownloadEntry, isImage: boolean): string {
   if (isImage && entry.modelId.startsWith('image:')) {
     return entry.modelId.replace('image:', '');
   }
+  // Text canonical id = the modelKey (repo/file), which is exactly what the finished
+  // model's id is (buildDownloadedModel: `${modelId}/${fileName}`). Keying the in-flight
+  // row by the bare repo produced a DIFFERENT uniform id than the completed model, so the
+  // dedup + reconcile never collapsed them → phantom "100%" rows and Active+Downloaded
+  // duplicates for one model. Image/STT already normalize to one id per model.
+  if (entry.modelType === 'text') return entry.modelKey;
   return entry.modelId;
 }
 
@@ -81,7 +87,9 @@ function queuedToActiveItem(q: { modelKey: string; modelId: string; fileName: st
     type: 'active',
     modelType: q.modelType as DownloadItem['modelType'],
     modelKey: q.modelKey,
-    modelId: q.modelId,
+    // Match getActiveItemModelId: text routes/dedups on the modelKey (repo/file), the
+    // same id the finished model carries; other types pass the modelId through.
+    modelId: q.modelType === 'text' ? q.modelKey : q.modelId,
     fileName: q.fileName,
     author: '',
     quantization: '',
