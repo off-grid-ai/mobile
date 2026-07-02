@@ -516,7 +516,7 @@ function buildDateContext(parts: ReturnType<typeof nowParts>): string {
 function buildExactTimeNote(parts: ReturnType<typeof nowParts>): string {
   const { dateStr, timeStr, tz } = parts;
   const tzPart = tz ? `, ${tz}` : '';
-  return `\n\n(Current local date and time: ${dateStr}T${timeStr}${tzPart}. Resolve "now", "right now", "in half an hour", and similar against this exact time.)`;
+  return `\n\n(Current local date and time: ${dateStr}T${timeStr}${tzPart}. Use this only to resolve relative times like "now", "right now", or "in half an hour" — do not mention or comment on the current date or time in your reply unless the user explicitly asks.)`;
 }
 
 function augmentSystemPromptForTools(
