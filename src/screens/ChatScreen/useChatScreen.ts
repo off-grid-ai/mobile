@@ -307,15 +307,18 @@ export const useChatScreen = () => {
   const handleReloadTextModel = useCallback(async () => {
     if (!activeModelInfo.modelId || activeModelInfo.isRemote) return;
     setShowModelSelector(true);
+    // Unload with keepSelection=true so a failed reload never clears activeModelId
+    // (the default unload cleared it, so an OOM stranded the chat: stuck banner +
+    // wedged send). The unload still nulls loadedTextModelId, so loadTextModel
+    // won't fast-path-skip. The memory gate — including the "Load Anyway" override
+    // — is owned by initiateModelLoad, so reload matches normal load exactly (no
+    // duplicated/stricter check in the view).
     if (activeModel?.engine === 'litert') {
-      // Unload LiteRT engine before reloading with the new backend
       if (liteRTService.isModelLoaded()) {
         await liteRTService.unloadModel().catch(() => { });
       }
-    // Must unload first — loadTextModel skips if the same model ID is already loaded,
-    // which means setLoadedSettings would never run and the banner would persist.
     } else if (llmService.isModelLoaded()) {
-      await activeModelService.unloadTextModel();
+      await activeModelService.unloadTextModel(true);
     }
     await initiateModelLoad(modelDeps, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
