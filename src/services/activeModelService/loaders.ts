@@ -144,9 +144,14 @@ async function doLoadLiteRTModel(ctx: TextLoadContext): Promise<void> {
 
     // Snapshot the settings that require a full engine reload so the pending-settings
     // banner appears if the user changes them while the model is loaded.
+    // Snapshot the RAW setting the banner compares against, NOT the normalized `maxTokens`
+    // (`settings.liteRTMaxTokens ?? 4096`): the banner checks `settings.liteRTMaxTokens
+    // !== loadedSettings.liteRTMaxTokens`, so if the setting is undefined here we'd store
+    // 4096 and it would never equal undefined — a false mismatch that pops the banner the
+    // instant a LiteRT model loads, with nothing actually changed.
     ctx.store.setLoadedSettings({
       liteRTBackend: ctx.store.settings.liteRTBackend,
-      liteRTMaxTokens: maxTokens,
+      liteRTMaxTokens: ctx.store.settings.liteRTMaxTokens,
       // Fields not used by LiteRT — set to current values so llama checks don't misfire
       contextLength: ctx.store.settings.contextLength,
       enableGpu: ctx.store.settings.enableGpu,
