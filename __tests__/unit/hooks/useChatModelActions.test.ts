@@ -8,7 +8,7 @@
  * - handleUnloadModelFn: success path with system message
  */
 
-import { initiateModelLoad, proceedWithModelLoadFn, handleModelSelectFn, handleUnloadModelFn } from '../../../src/screens/ChatScreen/useChatModelActions';
+import { initiateModelLoad, ensureModelLoadedFn, proceedWithModelLoadFn, handleModelSelectFn, handleUnloadModelFn } from '../../../src/screens/ChatScreen/useChatModelActions';
 import { createDownloadedModel } from '../../utils/factories';
 
 // ─────────────────────────────────────────────
@@ -155,10 +155,92 @@ describe('initiateModelLoad', () => {
 });
 
 // ─────────────────────────────────────────────
+// initiateModelLoad — typed outcomes (the seam that makes failures catchable)
+// ─────────────────────────────────────────────
+
+describe('initiateModelLoad typed outcome', () => {
+  it('returns no-model-selected when there is no active model', async () => {
+    const deps = makeDeps({ activeModel: undefined, activeModelId: null });
+    const outcome = await initiateModelLoad(deps, false);
+    expect(outcome).toEqual({ ok: false, reason: 'no-model-selected' });
+  });
+
+  it('returns insufficient-memory (alerted) when the memory check fails', async () => {
+    mockCheckMemoryForModel.mockResolvedValueOnce({ canLoad: false, message: 'Not enough RAM', severity: 'critical' });
+    const outcome = await initiateModelLoad(makeDeps(), false);
+    expect(outcome).toEqual({ ok: false, reason: 'insufficient-memory', detail: 'Not enough RAM', alerted: true });
+  });
+
+  it('returns ok when the load succeeds', async () => {
+    mockLoadTextModel.mockResolvedValueOnce(undefined);
+    expect(await initiateModelLoad(makeDeps(), false)).toEqual({ ok: true });
+  });
+
+  it('returns load-threw and alerts when the load throws (not already loading)', async () => {
+    mockLoadTextModel.mockRejectedValueOnce(new Error('boom'));
+    const outcome = await initiateModelLoad(makeDeps(), false);
+    expect(outcome).toEqual({ ok: false, reason: 'load-threw', detail: 'boom', alerted: true });
+  });
+
+  it('returns load-threw WITHOUT swallowing when alreadyLoading (the regression this fixes)', async () => {
+    mockLoadTextModel.mockRejectedValueOnce(new Error('stuck'));
+    const deps = makeDeps();
+    const outcome = await initiateModelLoad(deps, true);
+    // Previously this path returned void and showed nothing — now it reports why.
+    expect(outcome).toEqual({ ok: false, reason: 'load-threw', detail: 'stuck', alerted: false });
+    expect(deps.setAlertState).not.toHaveBeenCalled();
+  });
+
+  it('maps a "not found" load error to not-downloaded', async () => {
+    mockLoadTextModel.mockRejectedValueOnce(new Error('Model not found'));
+    const outcome = await initiateModelLoad(makeDeps(), true);
+    expect(outcome).toMatchObject({ ok: false, reason: 'not-downloaded' });
+  });
+});
+
+// ─────────────────────────────────────────────
+// ensureModelLoadedFn — typed outcomes
+// ─────────────────────────────────────────────
+
+describe('ensureModelLoadedFn typed outcome', () => {
+  it('returns no-model-selected when no model is active', async () => {
+    const deps = makeDeps({ activeModel: undefined, activeModelId: null });
+    expect(await ensureModelLoadedFn(deps)).toEqual({ ok: false, reason: 'no-model-selected' });
+  });
+
+  it('returns ok without loading when the model is already loaded', async () => {
+    mockGetLoadedModelPath.mockReturnValue('/path/model.gguf');
+    const outcome = await ensureModelLoadedFn(makeDeps());
+    expect(outcome).toEqual({ ok: true });
+    expect(mockLoadTextModel).not.toHaveBeenCalled();
+  });
+
+  it('propagates the loader outcome when a load is needed', async () => {
+    mockGetLoadedModelPath.mockReturnValue(null);
+    mockLoadTextModel.mockRejectedValueOnce(new Error('disk gone'));
+    const outcome = await ensureModelLoadedFn(makeDeps());
+    expect(outcome).toMatchObject({ ok: false, reason: 'load-threw', detail: 'disk gone' });
+  });
+});
+
+// ─────────────────────────────────────────────
 // proceedWithModelLoadFn
 // ─────────────────────────────────────────────
 
 describe('proceedWithModelLoadFn', () => {
+  it('closes the picker BEFORE the load runs (sheet dismisses up front, not after load)', async () => {
+    mockLoadTextModel.mockResolvedValueOnce(undefined);
+    const deps = makeDeps();
+    const model = createDownloadedModel({ id: 'm', name: 'M' });
+    const p = proceedWithModelLoadFn(deps, model); // don't await yet — check the sync prefix
+    // The close + loading flag run synchronously, before the load (which is behind
+    // waitForRenderFrame) has even been called.
+    expect(deps.setShowModelSelector).toHaveBeenCalledWith(false);
+    expect(deps.setIsModelLoading).toHaveBeenCalledWith(true);
+    expect(mockLoadTextModel).not.toHaveBeenCalled();
+    await p; // let it finish so nothing leaks
+  });
+
   it('loads model and posts system message when showGenerationDetails=true', async () => {
     mockLoadTextModel.mockResolvedValueOnce(undefined);
     mockGetMultimodalSupport.mockReturnValueOnce(null);

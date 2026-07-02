@@ -254,6 +254,8 @@ export interface ImageLoadContext {
   imageThreads: number;
   needsThreadReload: boolean;
   cpuOnly: boolean;
+  /** iOS Core ML: prefer the GPU over the Neural Engine (chosen by RAM tier). */
+  preferGpu: boolean;
   store: ReturnType<typeof useAppStore.getState>;
   timeoutMs: number;
   loadedImageModelId: string | null;
@@ -289,6 +291,7 @@ export async function doLoadImageModel(ctx: ImageLoadContext): Promise<void> {
             backend: 'auto',
             cpuOnly: ctx.cpuOnly,
             attentionVariant: ctx.model.attentionVariant,
+            preferGpu: ctx.preferGpu,
           },
         ),
         timeoutPromise,

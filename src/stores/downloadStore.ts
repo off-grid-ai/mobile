@@ -166,7 +166,10 @@ export const useDownloadStore = create<DownloadStoreState>((set) => ({
     if (!entry || entry.downloadId !== downloadId) return state;
     const combinedTotal = entry.combinedTotalBytes || total;
     const mmProjBytes = entry.mmProjBytesDownloaded ?? 0;
-    const progress = combinedTotal > 0 ? (bytes + mmProjBytes) / combinedTotal : 0;
+    // Clamp: when combinedTotalBytes isn't set yet, the denominator is the main file
+    // only, so adding the mmproj sidecar's bytes can push this past 1.0 (the >100%
+    // progress bar). A wrong total can also overshoot. Never report >1 or <0.
+    const progress = combinedTotal > 0 ? Math.min(1, Math.max(0, (bytes + mmProjBytes) / combinedTotal)) : 0;
     return {
       downloads: {
         ...state.downloads,
@@ -197,7 +200,8 @@ export const useDownloadStore = create<DownloadStoreState>((set) => ({
       return state;
     }
     const combinedTotal = entry.combinedTotalBytes || entry.totalBytes;
-    const progress = combinedTotal > 0 ? (entry.bytesDownloaded + bytes) / combinedTotal : 0;
+    // Clamp to [0,1] — same reason as updateProgress (main-only denominator + mmproj bytes).
+    const progress = combinedTotal > 0 ? Math.min(1, Math.max(0, (entry.bytesDownloaded + bytes) / combinedTotal)) : 0;
     return {
       downloads: {
         ...state.downloads,

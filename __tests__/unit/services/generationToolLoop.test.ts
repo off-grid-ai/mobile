@@ -452,9 +452,12 @@ describe('runToolLoop', () => {
       const ctx = createContext();
       await runToolLoop(ctx);
 
-      // Tool result message should contain the error
+      // Tool result message states the failure explicitly (never empty, never
+      // mistakable for success) and carries the underlying error + category.
       const toolMsg = mockAddMessage.mock.calls[1][1];
-      expect(toolMsg.content).toBe('Error: Network timeout');
+      expect(toolMsg.content).toContain('Network timeout');
+      expect(toolMsg.content).toContain('failed');
+      expect(toolMsg.content).toContain('do not assume it succeeded');
     });
 
     it('executes multiple tool calls in a single iteration', async () => {
@@ -666,7 +669,10 @@ describe('runToolLoop', () => {
       await runToolLoop(ctx);
 
       expect(onToolCallComplete).toHaveBeenCalledTimes(1);
-      expect(onToolCallComplete).toHaveBeenCalledWith('web_search', result);
+      // The loop normalizes the result (adds status), so match the original fields.
+      expect(onToolCallComplete).toHaveBeenCalledWith('web_search', expect.objectContaining({
+        name: result.name, content: result.content, status: 'ok',
+      }));
     });
 
     it('calls onToolCallStart and onToolCallComplete for multiple tool calls', async () => {
@@ -1619,6 +1625,48 @@ describe('runToolLoop – LiteRT tool call cap', () => {
 
     expect(mockExecuteToolCall).not.toHaveBeenCalled();
     expect(result).toBe('Aborted');
+  });
+
+  // Contract parity with the JS loop: the LiteRT native handler must funnel every tool
+  // outcome through normalizeToolResult + toolResultModelContent. A throw becomes a typed
+  // error string (no crash); an empty result becomes the explicit "ran but returned no
+  // content" message — never an empty string the model mistakes for success.
+  it('surfaces a thrown LiteRT tool as a normalized error string (does not crash)', async () => {
+    mockExecuteToolCall.mockRejectedValueOnce(new Error('MCP server not connected'));
+    let capturedToolHandler: ((name: string, args: Record<string, unknown>) => Promise<string>) | undefined;
+    mockedLiteRTService.generateRaw.mockImplementation(async (_text, _images, handlers) => {
+      capturedToolHandler = handlers?.onToolCall;
+      return 'final answer';
+    });
+
+    const ctx = createContext();
+    await runToolLoop(ctx);
+
+    // The handler must resolve (not reject) with the explicit failure string.
+    const result = await capturedToolHandler?.('web_search', { query: 'q' });
+
+    expect(mockExecuteToolCall).toHaveBeenCalledTimes(1);
+    expect(result).toContain('failed');
+    expect(result).toContain('do not assume it succeeded');
+    // network is the classified category for "not connected"
+    expect(result).toContain('network');
+    expect(result).not.toBe('');
+  });
+
+  it('surfaces an empty LiteRT tool result as the explicit "no content" message', async () => {
+    mockExecuteToolCall.mockResolvedValueOnce({ toolCallId: 'tc-1', name: 'web_search', content: '', durationMs: 5 });
+    let capturedToolHandler: ((name: string, args: Record<string, unknown>) => Promise<string>) | undefined;
+    mockedLiteRTService.generateRaw.mockImplementation(async (_text, _images, handlers) => {
+      capturedToolHandler = handlers?.onToolCall;
+      return 'final answer';
+    });
+
+    const ctx = createContext();
+    await runToolLoop(ctx);
+
+    const result = await capturedToolHandler?.('web_search', { query: 'q' });
+
+    expect(result).toBe('Tool "web_search" ran but returned no content.');
   });
 
   it('cap counter resets per generation (new runToolLoop call resets count)', async () => {

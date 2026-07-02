@@ -12,10 +12,14 @@ module.exports = {
     // CI does not (and must not) check out. They run in the pro repo's own CI.
     '/__tests__/unit/audio/',
     '/__tests__/unit/engine/',
+    '/__tests__/integration/audio/',
+    '__tests__/unit/audioProgressCaption.test.ts',
+    '__tests__/unit/mcp/McpToolExtension.test.ts',
     '__tests__/unit/services/ttsService.test.ts',
     '__tests__/unit/stores/ttsStore.test.ts',
     '__tests__/integration/stores/tts.test.ts',
     '__tests__/rntl/components/ChatInputModeToggle.test.tsx',
+    '__tests__/rntl/components/PlaybackControls.test.tsx',
     '__tests__/rntl/components/VoiceModelsPanel.test.tsx',
     '__tests__/rntl/components/KokoroTTSBridge.test.tsx',
     // MCP server/preset suites import the private pro/ submodule — run in pro's CI.

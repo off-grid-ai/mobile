@@ -7,19 +7,30 @@
  * was derived from the live engine phase + transient in-memory progress.
  *
  * The fix makes checkAssetStatus() consult executorch's on-disk cache
- * (BareResourceFetcher.listDownloadedModels) and treat isFullyDownloaded()
- * — phase==='ready' OR progress>=1 OR model files present on disk — as
- * 'downloaded'.
+ * (BareResourceFetcher.listDownloadedFiles — ALL cached files, since
+ * listDownloadedModels filters to .pte and can't see the voice assets) and
+ * treat isFullyDownloaded() — phase==='ready' OR progress>=1 OR the COMPLETE
+ * asset set present on disk — as 'downloaded'.
+ *
+ * Completeness is the full active-voice asset set (two core .pte + voice
+ * embedding + tagger + lexicon), NOT just the two .pte: the .pte survive a prior
+ * interrupted download, so checking only them reported "downloaded" the instant a
+ * fresh download began — the Download Manager showed Kokoro completed (82MB) while
+ * the Voice panel correctly showed it at 4%.
  */
 import { BareResourceFetcher } from 'react-native-executorch-bare-resource-fetcher';
 import { KokoroEngine, type KokoroBridgeHandle } from '../../../pro/audio/engine/tts/engines/kokoro/KokoroEngine';
 
-const listDownloadedModels =
-  BareResourceFetcher.listDownloadedModels as jest.Mock;
+const listDownloadedFiles =
+  BareResourceFetcher.listDownloadedFiles as jest.Mock;
 const deleteResources = BareResourceFetcher.deleteResources as jest.Mock;
 
-// The two .pte files executorch caches for Kokoro Medium.
-const KOKORO_FILES = ['duration_predictor.pte', 'synthesizer.pte'];
+// The two shared core .pte models.
+const KOKORO_CORE_FILES = ['duration_predictor.pte', 'synthesizer.pte'];
+// The active voice's own assets (see the enriched mockVoiceConfig in jest.setup).
+const KOKORO_VOICE_FILES = ['af_heart.bin', 'tagger.pt', 'lexicon.json'];
+// A COMPLETE download = core models + the active voice's assets.
+const KOKORO_FILES = [...KOKORO_CORE_FILES, ...KOKORO_VOICE_FILES];
 
 const noopHandle: KokoroBridgeHandle = {
   speak: jest.fn().mockResolvedValue(undefined),
@@ -30,11 +41,14 @@ const noopHandle: KokoroBridgeHandle = {
   setKeepAlive: jest.fn(),
 };
 
+// All cached files for a COMPLETE download, as executorch-style cache paths.
+const allOnDisk = () => KOKORO_FILES.map((f) => `/data/react-native-executorch/${f}`);
+
 describe('KokoroEngine install status', () => {
   beforeEach(() => {
-    listDownloadedModels.mockReset();
+    listDownloadedFiles.mockReset();
     deleteResources.mockReset().mockResolvedValue(undefined);
-    listDownloadedModels.mockResolvedValue([]);
+    listDownloadedFiles.mockResolvedValue([]);
   });
 
   it('reports not-downloaded when disk is empty and nothing has loaded', async () => {
@@ -45,11 +59,8 @@ describe('KokoroEngine install status', () => {
     expect(engine.isFullyDownloaded()).toBe(false);
   });
 
-  it('reports downloaded when both model files exist on disk (cold start / no bridge)', async () => {
-    listDownloadedModels.mockResolvedValue([
-      `/data/react-native-executorch/${KOKORO_FILES[0]}`,
-      `/data/react-native-executorch/${KOKORO_FILES[1]}`,
-    ]);
+  it('reports downloaded when the complete asset set exists on disk (cold start / no bridge)', async () => {
+    listDownloadedFiles.mockResolvedValue(allOnDisk());
     const engine = new KokoroEngine();
 
     // Phase is still 'idle' and no download happened this session — purely disk-derived.
@@ -62,21 +73,50 @@ describe('KokoroEngine install status', () => {
   });
 
   it('treats a partial disk cache (one file) as not-downloaded', async () => {
-    listDownloadedModels.mockResolvedValue([
-      `/data/react-native-executorch/${KOKORO_FILES[0]}`,
+    listDownloadedFiles.mockResolvedValue([
+      `/data/react-native-executorch/${KOKORO_CORE_FILES[0]}`,
     ]);
     const engine = new KokoroEngine();
     const [state] = await engine.checkAssetStatus();
     expect(state.status).toBe('not-downloaded');
   });
 
+  it('REGRESSION: core .pte present but voice assets missing reports NOT downloaded', async () => {
+    // The exact reported bug: the two core .pte survive a prior interrupted
+    // download, so re-tapping download instantly showed Kokoro "completed" in the
+    // Download Manager while the Voice panel honestly showed it at 4%. Only the
+    // core models are on disk — the active voice's embedding/tagger/lexicon are not.
+    listDownloadedFiles.mockResolvedValue(
+      KOKORO_CORE_FILES.map((f) => `/data/react-native-executorch/${f}`),
+    );
+    const engine = new KokoroEngine();
+    engine._setDownloadProgress(0.04); // mid-download, as the Voice panel shows
+    const [state] = await engine.checkAssetStatus();
+    expect(state.status).toBe('downloading');
+    expect(engine.isFullyDownloaded()).toBe(false);
+    expect(engine.getOverallDownloadProgress()).toBeCloseTo(0.04);
+  });
+
+  it('REGRESSION: a live download reports downloading even when ALL files are already on disk', async () => {
+    // executorch lists a destination basename before its bytes finish (and a prior
+    // interrupted attempt leaves files behind), so mid-download the full asset set
+    // can be present on disk. The Download Manager then showed Kokoro completed
+    // (82MB) while the Voice panel correctly showed 3%. A live download (phase
+    // 'downloading' / fractional progress) must win over the disk-presence guess.
+    listDownloadedFiles.mockResolvedValue(allOnDisk()); // every basename present
+    const engine = new KokoroEngine();
+    engine._setDownloadProgress(0.03); // → phase 'downloading', progress 3%
+    expect(engine.getPhase()).toBe('downloading');
+    const [state] = await engine.checkAssetStatus();
+    expect(state.status).toBe('downloading');
+    expect(engine.isFullyDownloaded()).toBe(false);
+    expect(engine.getOverallDownloadProgress()).toBeCloseTo(0.03);
+  });
+
   it('REGRESSION: stays downloaded after the bridge unmounts (engine switch)', async () => {
     // Model genuinely on disk for the whole test (a successful disk scan is the
     // authoritative signal).
-    listDownloadedModels.mockResolvedValue([
-      `/x/${KOKORO_FILES[0]}`,
-      `/x/${KOKORO_FILES[1]}`,
-    ]);
+    listDownloadedFiles.mockResolvedValue(allOnDisk());
     const engine = new KokoroEngine();
 
     // 1. Bridge mounts, model finishes downloading, engine becomes ready.
@@ -98,10 +138,7 @@ describe('KokoroEngine install status', () => {
   });
 
   it('stays downloaded across a voice switch that resets progress to 0', async () => {
-    listDownloadedModels.mockResolvedValue([
-      `/x/${KOKORO_FILES[0]}`,
-      `/x/${KOKORO_FILES[1]}`,
-    ]);
+    listDownloadedFiles.mockResolvedValue(allOnDisk());
     const engine = new KokoroEngine();
     await engine.checkAssetStatus(); // primes _diskDownloaded = true
 
@@ -115,7 +152,7 @@ describe('KokoroEngine install status', () => {
   it('does not regress to not-downloaded if the fetcher throws', async () => {
     const engine = new KokoroEngine();
     engine._setDownloadProgress(1); // downloaded this session
-    listDownloadedModels.mockRejectedValue(new Error('fetcher unavailable'));
+    listDownloadedFiles.mockRejectedValue(new Error('fetcher unavailable'));
 
     const [state] = await engine.checkAssetStatus();
     // Disk check failed but in-session progress still proves it's downloaded.
@@ -151,24 +188,83 @@ describe('KokoroEngine install status', () => {
     await expect(engine.speak('nope')).rejects.toThrow(/bridge not mounted/i);
   });
 
+  it('initialize() remounts the bridge after a residency eviction (manual replay fix)', async () => {
+    // REGRESSION: initialize() used to be a no-op, so speak()→initializeEngine()
+    // never reloaded an evicted engine and manual replay bailed with phase=idle.
+    const engine = new KokoroEngine();
+    engine._setMountRequester(() => engine._setBridge(noopHandle, 'af_heart'));
+    expect(engine.getPhase()).toBe('idle');
+
+    await engine.initialize();
+
+    expect(engine.getPhase()).toBe('ready');
+  });
+
+  it('initialize() is a no-op when the bridge is already attached (ready)', async () => {
+    const engine = new KokoroEngine();
+    const requester = jest.fn(() => engine._setBridge(noopHandle, 'af_heart'));
+    engine._setMountRequester(requester);
+    await engine.initialize(); // first mount
+    requester.mockClear();
+
+    await engine.initialize(); // already ready → must not re-request a mount
+    expect(requester).not.toHaveBeenCalled();
+    expect(engine.getPhase()).toBe('ready');
+  });
+
+  it('initialize() rejects when no bridge can mount (unsupported device)', async () => {
+    const engine = new KokoroEngine();
+    await expect(engine.initialize()).rejects.toThrow(/bridge not mounted/i);
+  });
+
+  it('release() asks the bridge to unmount so the executorch model is actually freed', async () => {
+    // Residency calls release() to reclaim RAM; nulling the handle alone leaves the
+    // ~330MB model resident, so release() must trigger the bridge to unmount.
+    const engine = new KokoroEngine();
+    const unmount = jest.fn();
+    engine._setUnmountRequester(unmount);
+    engine._setBridge(noopHandle, 'af_heart');
+    expect(engine.getPhase()).toBe('ready');
+    await engine.release();
+    expect(unmount).toHaveBeenCalled();
+    expect(engine.getPhase()).toBe('idle');
+  });
+
   it('deleteAssets clears state and removes resources from disk', async () => {
-    listDownloadedModels.mockResolvedValue([
-      `/x/${KOKORO_FILES[0]}`,
-      `/x/${KOKORO_FILES[1]}`,
-    ]);
+    listDownloadedFiles.mockResolvedValue(allOnDisk());
     const engine = new KokoroEngine();
     engine._setDownloadProgress(1);
     await engine.checkAssetStatus();
     expect(engine.isFullyDownloaded()).toBe(true);
 
+    // deleteAssets re-scans disk at the end; simulate the files being gone so the
+    // post-delete scan is conclusive-empty.
+    listDownloadedFiles.mockResolvedValue([]);
     await engine.deleteAssets();
     expect(deleteResources).toHaveBeenCalled();
 
-    // After deletion, disk is empty → not-downloaded.
-    listDownloadedModels.mockResolvedValue([]);
+    // deleteAssets re-scanned → already not-downloaded without a manual re-check.
+    expect(engine.isFullyDownloaded()).toBe(false);
     const [state] = await engine.checkAssetStatus();
     expect(state.status).toBe('not-downloaded');
-    expect(engine.isFullyDownloaded()).toBe(false);
+  });
+
+  it('REGRESSION: deleteAssets removes the FULL active-voice set, not just the core .pte', async () => {
+    // The bug: deleteAssets deleted only the two core .pte files, leaving the
+    // voice embedding/tagger/lexicon on disk. The completeness scan checks the
+    // full set, so the Download Manager kept showing Kokoro "downloaded" after a
+    // Remove. Delete must target the same set download + completeness use.
+    listDownloadedFiles.mockResolvedValue(allOnDisk());
+    const engine = new KokoroEngine();
+    await engine.checkAssetStatus();
+
+    await engine.deleteAssets();
+
+    const deleted: string[] = deleteResources.mock.calls[0] ?? [];
+    // Every required source (core + voice/tagger/lexicon) must be in the delete set.
+    for (const f of KOKORO_FILES) {
+      expect(deleted.some((url) => url.split(/[?#]/)[0].split('/').pop() === f)).toBe(true);
+    }
   });
 
   it('a conclusive empty disk scan beats stale in-session progress', async () => {
@@ -179,7 +275,7 @@ describe('KokoroEngine install status', () => {
     // the fetcher-unavailable case above.)
     const engine = new KokoroEngine();
     engine._setDownloadProgress(1); // stale leftover
-    listDownloadedModels.mockResolvedValue([]); // conclusive: nothing on disk
+    listDownloadedFiles.mockResolvedValue([]); // conclusive: nothing on disk
     await engine.checkAssetStatus();
     expect(engine.isFullyDownloaded()).toBe(false);
   });

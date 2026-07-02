@@ -10,7 +10,8 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useSpotlightTour } from 'react-native-spotlight-tour';
-import { CustomAlert, hideAlert, SharePromptSheet, ProAhaSheet } from '../../components';
+import { CustomAlert, hideAlert, showAlert, SharePromptSheet, ProAhaSheet } from '../../components';
+import { useEjectAllModels } from '../../hooks/useEjectAllModels';
 import { consumePendingSpotlight } from '../../components/onboarding/spotlightState';
 import { subscribeSharePrompt } from '../../utils/sharePrompt';
 import { subscribeProPrompt } from '../../utils/proPrompt';
@@ -55,11 +56,40 @@ export const ChatScreen: React.FC = () => {
     voice: voiceSummary ?? '—',
     speech: WHISPER_MODELS.find((m) => m.id === whisperModelId)?.name ?? '—',
   };
-  const openModelRow = (type: ModelRowType) => {
-    setModelsManagerOpen(false);
+  const pendingModelRowRef = useRef<ModelRowType | null>(null);
+  // Eject All — shared with Home via one hook (the unload side-effect lives in the
+  // service, not duplicated per screen). Deferred until the sheet fully closes so
+  // the confirm dialog isn't rendered under it (same pattern as the row pickers).
+  const { isEjecting, hasActiveModel: hasEjectableModel, ejectAll } = useEjectAllModels();
+  const pendingEjectRef = useRef(false);
+  const confirmEjectAll = () => {
+    chat.setAlertState(showAlert('Eject All Models', 'Unload all active models to free up memory?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Eject', style: 'destructive',
+        onPress: async () => {
+          chat.setAlertState(hideAlert());
+          try {
+            const count = await ejectAll();
+            if (count > 0) chat.setAlertState(showAlert('Done', `Unloaded ${count} model${count > 1 ? 's' : ''}`));
+          } catch {
+            chat.setAlertState(showAlert('Error', 'Failed to unload models'));
+          }
+        },
+      },
+    ]));
+  };
+  const openModelRowNow = (type: ModelRowType) => {
     if (type === 'text' || type === 'image') chat.setShowModelSelector(true);
     else if (type === 'speech') setWhisperOpen(true);
     else setVoiceOpen(true);
+  };
+  const openModelRow = (type: ModelRowType) => {
+    // Defer opening the target sheet until the manager sheet has FULLY closed.
+    // Presenting a sheet while another is still dismissing drops the present on
+    // iOS, so the row tap just closed the manager and nothing opened.
+    pendingModelRowRef.current = type;
+    setModelsManagerOpen(false);
   };
   const pendingNextRef = useRef<number | null>(null);
 
@@ -252,12 +282,18 @@ export const ChatScreen: React.FC = () => {
         <ModelsManagerSheet
           visible={modelsManagerOpen}
           onClose={() => setModelsManagerOpen(false)}
+          onClosed={() => {
+            const t = pendingModelRowRef.current;
+            pendingModelRowRef.current = null;
+            if (t) openModelRowNow(t);
+            if (pendingEjectRef.current) { pendingEjectRef.current = false; confirmEjectAll(); }
+          }}
           labels={modelLabels}
           loadingState={{ isLoading: !!chat.isModelLoading, type: 'text' }}
-          isEjecting={false}
-          hasActiveModel={false}
+          isEjecting={isEjecting}
+          hasActiveModel={hasEjectableModel}
           onOpenRow={openModelRow}
-          onEject={() => {}}
+          onEject={() => { pendingEjectRef.current = true; setModelsManagerOpen(false); }}
         />
         <WhisperPickerSheet visible={whisperOpen} onClose={() => setWhisperOpen(false)} />
         <VoiceModelsSheet visible={voiceOpen} onClose={() => setVoiceOpen(false)} />

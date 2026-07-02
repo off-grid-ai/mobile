@@ -81,6 +81,14 @@ jobs:
       - name: Run Jest tests
         run: npx jest --coverage --forceExit
 
+      - name: Install Android NDK
+        # Configuring the native modules (op-sqlite etc.) needs the pinned NDK; the macOS
+        # runner doesn't ship it, so the android test task failed at configure with
+        # "Failed to install ndk;...". Install the version android/build.gradle forces.
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" "ndk;27.1.12297006" >/dev/null
+
       - name: Run Android tests
         run: cd android && ./gradlew :app:testDebugUnitTest --rerun-tasks
 
@@ -134,6 +142,15 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+
+      - name: Free disk space
+        # The native C++ builds (react-native-audio-api, op-sqlite) exhausted the runner
+        # disk ("LLVM ERROR: IO failure on output stream: No space left on device").
+        # Reclaim large preinstalled toolchains we don't use; keep the Android SDK/NDK.
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune --all --force || true
+          df -h
 
       - name: Install dependencies
         run: npm ci

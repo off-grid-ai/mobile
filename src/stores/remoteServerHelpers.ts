@@ -21,6 +21,19 @@ import {
 /** Timeout for model discovery fetches (non-critical, background operation) */
 const DISCOVERY_FETCH_TIMEOUT_MS = 5000;
 
+/**
+ * The Off Grid AI Desktop gateway tags every /v1/models entry with a modality
+ * `kind` (chat | vision | image | speech | transcription). Only chat/vision are
+ * text models that belong in the chat model picker — image, speech (TTS) and
+ * transcription (STT) models must not be listed as text. Servers that don't send
+ * `kind` (Ollama, LM Studio) fall back to the name-based generative filter.
+ */
+function isTextModel(model: { id?: string; name?: string; kind?: unknown }): boolean {
+  const kind = typeof model.kind === 'string' ? model.kind : null;
+  if (kind) return kind === 'chat' || kind === 'vision';
+  return isGenerativeModel(model.id ?? model.name ?? '');
+}
+
 export async function testServerConnection(server: RemoteServer): Promise<ServerTestResult> {
   try {
     const testResult = await testEndpoint(server.endpoint, 10000, server.apiKey);
@@ -132,7 +145,7 @@ export async function fetchModelsFromServer(server: RemoteServer): Promise<Remot
 
       // OpenAI format: { object: "list", data: [{ id, object, owned_by, ... }] }
       if (data?.object === 'list' && Array.isArray(data.data)) {
-        const generativeModels = data.data.filter((model: { id: string }) => isGenerativeModel(model.id));
+        const generativeModels = data.data.filter((model: { id: string; kind?: unknown }) => isTextModel(model));
         const modelInfos = await Promise.all(
           generativeModels.map((model: { id: string }) =>
             fetchModelCapabilities(url, model.id, nameDetect)
@@ -155,7 +168,7 @@ export async function fetchModelsFromServer(server: RemoteServer): Promise<Remot
       // Ollama format via /v1/models: { models: [{ name, ... }] }
       if (Array.isArray(data.models)) {
         const generativeModels = data.models.filter(
-          (model: { name: string }) => isGenerativeModel(model.name)
+          (model: { name: string; kind?: unknown }) => isTextModel(model)
         );
         const modelInfos = await Promise.all(
           generativeModels.map((model: { name: string }) =>

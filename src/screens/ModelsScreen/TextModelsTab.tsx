@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { View, Text, FlatList, TextInput, ActivityIndicator, RefreshControl, TouchableOpacity, InteractionManager, Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 import Icon from 'react-native-vector-icons/Feather';
+import { modelBudgetFraction } from '../../services/memoryBudget';
 import { AttachStep, useSpotlightTour } from 'react-native-spotlight-tour';
 import { Card, ModelCard } from '../../components';
 import { AnimatedEntry } from '../../components/AnimatedEntry';
@@ -199,7 +200,7 @@ const ModelDetailView: React.FC<DetailProps> = ({
         isDownloading={!!s.progress && !s.hasFailed} downloadProgress={s.progress?.progress}
         downloadBytes={s.progress && !s.hasFailed ? { downloaded: s.progress.bytesDownloaded, total: s.progress.totalBytes } : undefined}
         isRepairingVision={s.repairingVision}
-        isCompatible={item.size / (1024 ** 3) < ramGB * 0.6} testID={`file-card-${index}`}
+        isCompatible={item.size / (1024 ** 3) < ramGB * modelBudgetFraction(ramGB)} testID={`file-card-${index}`}
         onDownload={onDownload}
         onDelete={s.downloaded ? () => handleDeleteModel(`${selectedModel.id}/${item.name}`) : undefined}
         onRepairVision={s.needsVisionRepair && !s.progress && !s.repairingVision ? () => handleRepairMmProj(selectedModel, item) : undefined}
@@ -263,7 +264,7 @@ const ModelDetailView: React.FC<DetailProps> = ({
       ) : (
         <FlatList
           data={modelFiles
-            .filter(f => f.size > 0 && f.size / (1024 ** 3) < ramGB * 0.6 && (filterState.quant === 'all' || f.name.includes(filterState.quant)))
+            .filter(f => f.size > 0 && f.size / (1024 ** 3) < ramGB * modelBudgetFraction(ramGB) && (filterState.quant === 'all' || f.name.includes(filterState.quant)))
             .sort((a, b) => {
               // LiteRT files: smaller-first (E2B before E4B) — both are curated,
               // no Q4_K_M concept, and the smaller variant fits more devices.

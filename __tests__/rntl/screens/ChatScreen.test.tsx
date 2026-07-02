@@ -293,6 +293,8 @@ jest.mock('../../../src/components', () => ({
       </View>
     );
   },
+  ThinkingIndicator: () => null,
+  ModelFailureCard: () => null,
   ModelSelectorModal: ({ visible, onClose, onSelectModel, onUnloadModel }: any) => {
     const { View, Text, TouchableOpacity } = require('react-native');
     if (!visible) return null;
@@ -431,14 +433,22 @@ jest.mock('../../../src/components/AnimatedPressable', () => ({
 // entry animation, which doesn't flush synchronously in tests, so we render a
 // lightweight stand-in that exposes the same `models-row-*` testIDs and callback.
 jest.mock('../../../src/components/models/ModelsManagerSheet', () => ({
-  ModelsManagerSheet: ({ visible, onOpenRow }: any) => {
+  ModelsManagerSheet: ({ visible, onOpenRow, onClosed }: any) => {
     const { View, Text, TouchableOpacity } = require('react-native');
     if (!visible) return null;
     const rows = ['text', 'image', 'voice', 'speech'];
+    // The real sheet defers opening the target sheet to AppSheet's onClosed (which
+    // fires after the close animation) — presenting while dismissing drops the
+    // present on iOS. Simulate that here: a row tap closes the manager (onOpenRow)
+    // then fires onClosed so the deferred open runs.
     return (
       <View testID="models-manager-sheet">
         {rows.map((type) => (
-          <TouchableOpacity key={type} testID={`models-row-${type}`} onPress={() => onOpenRow(type)}>
+          <TouchableOpacity
+            key={type}
+            testID={`models-row-${type}`}
+            onPress={() => { onOpenRow(type); onClosed?.(); }}
+          >
             <Text>{type}</Text>
           </TouchableOpacity>
         ))}

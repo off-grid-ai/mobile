@@ -8,7 +8,7 @@ import { consumePendingSpotlight } from '../../components/onboarding/spotlightSt
 import { useTheme, useThemedStyles } from '../../theme';
 import { HFImageModel, getVariantLabel } from '../../services/huggingFaceModelBrowser';
 import { ImageModelRecommendation } from '../../types';
-import { useDownloadStore } from '../../stores/downloadStore';
+import { useDownloadStore, isActiveStatus } from '../../stores/downloadStore';
 import { makeImageModelKey } from '../../utils/modelKey';
 import { createStyles } from './styles';
 import { ModelsScreenViewModel } from './useModelsScreen';
@@ -54,8 +54,14 @@ const ImageModelCardItem: React.FC<ImageModelCardProps> = ({
   // via the stable image:<id> modelKey. Replaces drilled imageModelDownloading
   // and imageModelProgress props.
   const entry = useDownloadStore(s => s.downloads[makeImageModelKey(model.id)]);
-  const isEntryOccupied = !!entry && entry.status !== 'completed' && entry.status !== 'cancelled';
-  const isDownloading = isEntryOccupied;
+  // Classify with the SAME shared predicate the Download Manager uses (isActiveStatus).
+  // The old `status !== 'completed' && status !== 'cancelled'` bucketed a *failed* row
+  // as "downloading", so a kill-orphaned download showed a fake "downloading 0%" here
+  // while the Download Manager (correctly) showed it failed → Retry/Remove. One rule,
+  // one source of truth: a failed/interrupted row is NOT active, so the card offers a
+  // fresh download (which routes through retryEntry) instead of lying about progress.
+  const isActive = !!entry && isActiveStatus(entry.status);
+  const isDownloading = isActive;
   const progressValue = entry?.progress ?? 0;
   let authorLabel: string;
   if (model._coreml) authorLabel = 'Core ML';
@@ -83,8 +89,8 @@ const ImageModelCardItem: React.FC<ImageModelCardProps> = ({
         isCompatible={isCompatible}
         incompatibleReason={incompatibleReason}
         testID={`image-model-card-${index}`}
-        onDownload={isEntryOccupied ? undefined : () => handleDownloadImageModel(hfModelToDescriptor(model))}
-        onCancel={isEntryOccupied ? () => handleCancelImageDownload(model.id) : undefined}
+        onDownload={isActive ? undefined : () => handleDownloadImageModel(hfModelToDescriptor(model))}
+        onCancel={isActive ? () => handleCancelImageDownload(model.id) : undefined}
       />
     </View>
   );

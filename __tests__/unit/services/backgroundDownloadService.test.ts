@@ -1241,4 +1241,137 @@ describe('BackgroundDownloadService', () => {
       expect(result).toBe(false);
     });
   });
+
+  // ========================================================================
+  // Concurrency queue — never hand more than MAX_CONCURRENT_DOWNLOADS to native
+  // ========================================================================
+  describe('concurrency queue (max 3)', () => {
+    const flush = () => new Promise<void>((r) => setImmediate(r));
+    const params = (id: string) => ({
+      url: `https://example.com/${id}.gguf`,
+      fileName: `${id}.gguf`,
+      modelId: id,
+      modelKey: id,
+      totalBytes: 1000,
+    });
+
+    beforeEach(() => {
+      let seq = 0;
+      mockDownloadManagerModule.startDownload.mockImplementation(async () => ({
+        downloadId: String(++seq),
+        fileName: 'f',
+        modelId: 'm',
+      }));
+    });
+
+    it('starts only 3 immediately and queues the rest', async () => {
+      const ids = ['a', 'b', 'c', 'd', 'e'];
+      ids.forEach((id) => service.startDownload(params(id)));
+      // Slots reserved synchronously, so 2 are queued right away.
+      expect(service.getQueuedCount()).toBe(2);
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(3);
+    });
+
+    it('promotes the next queued download when one COMPLETES', async () => {
+      ['a', 'b', 'c', 'd', 'e'].forEach((id) => service.startDownload(params(id)));
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(3);
+
+      eventHandlers.DownloadComplete({ downloadId: '1' });
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(4);
+      expect(service.getQueuedCount()).toBe(1);
+    });
+
+    it('promotes the next queued download when one ERRORS', async () => {
+      ['a', 'b', 'c', 'd'].forEach((id) => service.startDownload(params(id)));
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(3);
+
+      eventHandlers.DownloadError({ downloadId: '2', reason: 'boom' });
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(4);
+      expect(service.getQueuedCount()).toBe(0);
+    });
+
+    it('promotes the next queued download when one is CANCELLED', async () => {
+      mockDownloadManagerModule.cancelDownload.mockResolvedValue(undefined);
+      ['a', 'b', 'c', 'd'].forEach((id) => service.startDownload(params(id)));
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(3);
+
+      await service.cancelDownload('3');
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(4);
+    });
+
+    it('never exceeds 3 concurrent even as downloads complete', async () => {
+      ['a', 'b', 'c', 'd', 'e', 'f'].forEach((id) => service.startDownload(params(id)));
+      await flush();
+      // 3 active, 3 queued.
+      expect(service.getQueuedCount()).toBe(3);
+      // Complete two: two more admitted, still capped at 3 concurrent.
+      eventHandlers.DownloadComplete({ downloadId: '1' });
+      eventHandlers.DownloadComplete({ downloadId: '2' });
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(5);
+      expect(service.getQueuedCount()).toBe(1);
+    });
+
+    it('coalesces a duplicate start for an already-queued model (queued once, started once)', async () => {
+      ['a', 'b', 'c'].forEach((id) => service.startDownload(params(id)));
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(3);
+      // A double-tap on the same queued model must not enqueue it twice.
+      service.startDownload(params('d'));
+      service.startDownload(params('d'));
+      expect(service.getQueuedCount()).toBe(1);
+      // When a slot frees, 'd' starts exactly once (not twice).
+      eventHandlers.DownloadComplete({ downloadId: '1' });
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(4);
+      expect(service.getQueuedCount()).toBe(0);
+    });
+
+    it('cancelQueued removes a waiting start, settles it as cancelled, and frees the queue', async () => {
+      const promises = ['a', 'b', 'c', 'd'].map((id) => service.startDownload(params(id)));
+      await flush();
+      // 'd' is queued (a,b,c hold the 3 slots) — it has no native downloadId yet.
+      expect(service.getQueuedCount()).toBe(1);
+      let rejected: (Error & { cancelled?: boolean }) | null = null;
+      const dSettled = promises[3].catch((e: Error & { cancelled?: boolean }) => { rejected = e; });
+
+      const removed = service.cancelQueued('d');
+
+      expect(removed).toBe(true);
+      expect(service.getQueuedCount()).toBe(0);
+      await dSettled;
+      // The awaiting startDownload() settles as a user cancellation, not a failure.
+      expect(rejected).not.toBeNull();
+      expect(rejected!.cancelled).toBe(true);
+      // Cancelling a queued start touches NO native download (it never began).
+      expect(mockDownloadManagerModule.cancelDownload).not.toHaveBeenCalled();
+    });
+
+    it('cancelQueued returns false for a key that is not queued', () => {
+      ['a', 'b', 'c'].forEach((id) => service.startDownload(params(id)));
+      expect(service.cancelQueued('nope')).toBe(false);
+    });
+
+    it('adoptActive counts restored downloads against the cap', async () => {
+      // Simulate a relaunch that resumed 3 downloads natively.
+      service.adoptActive(['r1', 'r2', 'r3']);
+      service.startDownload(params('new'));
+      // Cap already full from restored ones → the fresh start is queued.
+      expect(service.getQueuedCount()).toBe(1);
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).not.toHaveBeenCalled();
+
+      // A restored one finishing frees a slot for the queued start.
+      eventHandlers.DownloadComplete({ downloadId: 'r1' });
+      await flush();
+      expect(mockDownloadManagerModule.startDownload).toHaveBeenCalledTimes(1);
+    });
+  });
 });
